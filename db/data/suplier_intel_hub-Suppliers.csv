@@ -1,0 +1,12 @@
+ID,name,segment_ID,plant_ID,responsible,category,subcategory,mainSupplies,score,nextReview,complianceStatus,isTopSupplier,createdAt,createdBy,modifiedAt,modifiedBy
+SUP-001,IronBolt Inc,SEG-MEC,PLT-AR,Sarah P.,Mechanical Solutions,Steel and Iron Castings,"Machined Grey Iron Casting, Iron Casting Parts with Assembly",9.3,2025-08-15,UpcomingRenew,true,2024-01-15,system,2025-07-10,system
+SUP-002,Advanced Materials Corp,SEG-ELE,PLT-CPH,Sarah P.,Electronics,PCB & Semiconductors,"PCB Assemblies, Electronic Components",8.1,2025-10-20,OK,false,2024-02-01,system,2025-06-01,system
+SUP-003,Nordic Steel Solutions,SEG-RAW,PLT-NOR,Sarah P.,Raw Materials,Steel Products,"Hot Rolled Steel, Cold Rolled Coils, Steel Plates",7.8,2025-09-05,OK,false,2024-03-10,system,2025-05-15,system
+SUP-004,Precision Components Ltd,SEG-MEC,PLT-SON,Sarah P.,Mechanical Solutions,Precision Machined Parts,"CNC Machined Parts, Turned Components, Housings",8.9,2025-11-30,OK,true,2024-01-20,system,2025-07-01,system
+SUP-005,Green Energy Systems,SEG-REN,PLT-CPH,Sarah P.,Renewable Energy,Solar & Wind Components,"Solar Panels, Wind Turbine Components, Power Inverters",8.4,2026-01-15,OK,false,2024-04-05,system,2025-06-10,system
+SUP-006,Industrial Automation GmbH,SEG-CAS,PLT-FLE,Sarah P.,Castings,Die Castings,"Aluminum Die Castings, Zinc Die Castings",7.2,2025-08-01,Expired,false,2024-02-15,system,2025-05-20,system
+SUP-007,FluidTech Solutions,SEG-HYD,PLT-NOR,Sarah P.,Hydraulics,Hydraulic Components,"Hydraulic Valves, Hydraulic Cylinders, Fittings",8.6,2025-12-10,OK,false,2024-03-01,system,2025-07-05,system
+SUP-008,Smart Controls Inc,SEG-ELE,PLT-GRA,Sarah P.,Electronics,Control Systems,"PLC Controllers, HMI Panels, Sensors",9.0,2026-02-28,OK,true,2024-01-10,system,2025-07-08,system
+SUP-009,Supplier 9,SEG-DPS,PLT-AR,Sarah P.,Drive Power Systems,Motors,"Electric Motors, Gear Motors",7.5,2025-09-15,UpcomingRenew,false,2024-05-01,system,2025-06-01,system
+SUP-010,Supplier 10,SEG-DPS,PLT-AR,Sarah P.,Drive Power Systems,Drives,"Variable Frequency Drives, Servo Drives",7.0,2025-10-01,OK,false,2024-05-15,system,2025-06-15,system
+SUP-011,Supplier 11,SEG-ELE,PLT-CPH,Sarah P.,Electronics,Passive Components,"Capacitors, Resistors, Inductors",6.8,2025-11-15,OK,false,2024-06-01,system,2025-06-20,system
