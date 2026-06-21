@@ -22,7 +22,7 @@ annotate service.SpendData with @(
   Aggregation.ApplySupported : {
     $Type                  : 'Aggregation.ApplySupportedType',
     Transformations        : [ 'aggregate', 'groupby', 'filter' ],
-    GroupableProperties    : [ year ],
+    GroupableProperties    : [ date, yearMonth, year ],
     AggregatableProperties : [ { $Type:'Aggregation.AggregatablePropertyType', Property: amount } ]
   },
   Analytics.AggregatedProperty #totalSpend : {
@@ -32,14 +32,16 @@ annotate service.SpendData with @(
     AggregationMethod    : 'sum',
     ![@Common.Label]     : 'Spend Amount (EUR)'
   },
+  // date is the filterable field driven by the period buttons (hidden FilterBar)
+  UI.SelectionFields : [ date ],
   UI.Chart : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Spend Development',
     ChartType       : #Column,
-    Dimensions      : [ year ],
+    Dimensions      : [ date ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#totalSpend] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: date, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',

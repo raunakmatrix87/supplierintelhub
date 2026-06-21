@@ -76,9 +76,11 @@ entity QualityClaims : sid, managed {
 // ─── Spend Data (yearly) ────────────────────────────────────────────────────
 
 entity SpendData : sid {
-  supplier : Association to Suppliers;
-  year     : Integer  @title: 'Year';
-  amount   : Decimal(15,2) @title: 'Spend Amount (EUR)';
+  supplier  : Association to Suppliers;
+  date      : Date         @title: 'Date';
+  yearMonth : String(7)    @title: 'Period';   // e.g. '2026-06' - chart dimension
+  year      : Integer      @title: 'Year';
+  amount    : Decimal(15,2) @title: 'Spend Amount (EUR)';
 }
 
 // ─── On-Time Delivery (monthly) ─────────────────────────────────────────────

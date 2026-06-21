@@ -62,10 +62,33 @@
             <uxap:ObjectPageSection title="Spend Development" titleUppercase="false">
                 <uxap:subSections>
                     <uxap:ObjectPageSubSection>
-                        <macros:Chart
-                            id="spendChart"
-                            metaPath="spendData/@com.sap.vocabularies.UI.v1.Chart"
-                            selectionMode="None"/>
+                        <VBox>
+                            <OverflowToolbar>
+                                <ToolbarSpacer/>
+                                <SegmentedButton
+                                    id="spendPeriod"
+                                    selectedKey="quarter"
+                                    selectionChange=".onSpendPeriodChange">
+                                    <items>
+                                        <SegmentedButtonItem key="month" text="This Month"/>
+                                        <SegmentedButtonItem key="quarter" text="This Quarter"/>
+                                        <SegmentedButtonItem key="year" text="This Year"/>
+                                        <SegmentedButtonItem key="all" text="All"/>
+                                    </items>
+                                </SegmentedButton>
+                            </OverflowToolbar>
+                            <!-- Hidden filter source that drives the chart via the period buttons -->
+                            <macros:FilterBar
+                                id="spendFilterBar"
+                                metaPath="spendData/@com.sap.vocabularies.UI.v1.SelectionFields"
+                                visible="false"
+                                liveMode="true"/>
+                            <macros:Chart
+                                id="spendChart"
+                                metaPath="spendData/@com.sap.vocabularies.UI.v1.Chart"
+                                filterBar="spendFilterBar"
+                                selectionMode="None"/>
+                        </VBox>
                     </uxap:ObjectPageSubSection>
                 </uxap:subSections>
             </uxap:ObjectPageSection>
