@@ -1,0 +1,74 @@
+<mvc:View
+    xmlns:core="sap.ui.core"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns="sap.m"
+    xmlns:uxap="sap.uxap"
+    xmlns:macros="sap.fe.macros"
+    controllerName="supplierintelhub.ext.view.SupplierObjectPage">
+    <uxap:ObjectPageLayout
+        id="supplierObjectPage"
+        showTitleInHeaderContent="true"
+        upperCaseAnchorBar="false"
+        enableLazyLoading="false">
+        <uxap:headerTitle>
+            <uxap:ObjectPageDynamicHeaderTitle>
+                <uxap:heading>
+                    <Title text="{name}" level="H2"/>
+                </uxap:heading>
+                <uxap:snappedContent>
+                    <Text text="{segmentName}"/>
+                </uxap:snappedContent>
+                <uxap:expandedContent>
+                    <Text text="{segmentName}"/>
+                </uxap:expandedContent>
+                <uxap:actions>
+                    <ObjectStatus
+                        text="{complianceStatus}"
+                        state="{= ${complianceStatus} === 'OK' ? 'Success' : (${complianceStatus} === 'Expired' ? 'Error' : 'Warning') }"/>
+                </uxap:actions>
+            </uxap:ObjectPageDynamicHeaderTitle>
+        </uxap:headerTitle>
+        <uxap:headerContent>
+            <FlexBox wrap="Wrap" alignItems="Start" class="sapUiSmallMarginTop">
+                <VBox class="sapUiLargeMarginEnd">
+                    <Label text="Category"/>
+                    <Text text="{category}"/>
+                    <Label text="Subcategory" class="sapUiSmallMarginTop"/>
+                    <Text text="{subcategory}"/>
+                </VBox>
+                <VBox class="sapUiLargeMarginEnd">
+                    <Label text="Main Supplies"/>
+                    <Text text="{mainSupplies}"/>
+                    <Label text="Supplier Responsible" class="sapUiSmallMarginTop"/>
+                    <Text text="{responsible}"/>
+                </VBox>
+                <VBox class="sapUiLargeMarginEnd">
+                    <Label text="Next Review"/>
+                    <Text text="{nextReview}"/>
+                    <Label text="Danfoss Plant" class="sapUiSmallMarginTop"/>
+                    <Text text="{plantName}"/>
+                </VBox>
+                <VBox class="sapUiLargeMarginEnd">
+                    <Label text="Active Quality Claims"/>
+                    <ObjectNumber number="{activeQualityClaims}"/>
+                </VBox>
+                <VBox>
+                    <Label text="Score"/>
+                    <ObjectNumber number="{score}" unit="/ 10" emphasized="true"/>
+                </VBox>
+            </FlexBox>
+        </uxap:headerContent>
+        <uxap:sections>
+            <uxap:ObjectPageSection title="Spend Development" titleUppercase="false">
+                <uxap:subSections>
+                    <uxap:ObjectPageSubSection>
+                        <macros:Chart
+                            id="spendChart"
+                            metaPath="spendData/@com.sap.vocabularies.UI.v1.Chart"
+                            selectionMode="None"/>
+                    </uxap:ObjectPageSubSection>
+                </uxap:subSections>
+            </uxap:ObjectPageSection>
+        </uxap:sections>
+    </uxap:ObjectPageLayout>
+</mvc:View>

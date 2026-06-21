@@ -1,6 +1,57 @@
-<mvc:View xmlns:core="sap.ui.core" xmlns:mvc="sap.ui.core.mvc" xmlns="sap.m" xmlns:macros="sap.fe.macros"
-    xmlns:html="http://www.w3.org/1999/xhtml" controllerName="supplierintelhub.ext.view.Main">
-    <Page id="Main" title="{i18n>MainTitle}">
-        <content></content>
+<mvc:View
+    xmlns:core="sap.ui.core"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns="sap.m"
+    xmlns:f="sap.f"
+    xmlns:macros="sap.fe.macros"
+    xmlns:html="http://www.w3.org/1999/xhtml"
+    controllerName="supplierintelhub.ext.view.Main">
+    <Page id="Main" title="{i18n>MainTitle}" showHeader="false" class="sapUiNoContentPadding">
+        <content>
+            <f:DynamicPage id="suppliersPage" headerExpanded="true" toggleHeaderOnTitleClick="false">
+                <f:title>
+                    <f:DynamicPageTitle>
+                        <f:heading>
+                            <Title text="{i18n>SuppliersListTitle}" level="H2"/>
+                        </f:heading>
+                        <f:actions>
+                            <SegmentedButton
+                                id="supplierScope"
+                                selectedKey="all"
+                                selectionChange=".onSupplierScopeChange">
+                                <items>
+                                    <SegmentedButtonItem key="all" text="{i18n>QF_AllSuppliers}"/>
+                                    <SegmentedButtonItem key="mine" text="{i18n>QF_MySuppliers}"/>
+                                </items>
+                            </SegmentedButton>
+                        </f:actions>
+                    </f:DynamicPageTitle>
+                </f:title>
+                <f:header>
+                    <f:DynamicPageHeader pinnable="true">
+                        <macros:FilterBar
+                            id="supplierFilterBar"
+                            metaPath="@com.sap.vocabularies.UI.v1.SelectionFields"
+                            liveMode="false"
+                            showMessages="true"/>
+                    </f:DynamicPageHeader>
+                </f:header>
+                <f:content>
+                    <macros:Table
+                        id="suppliersTable"
+                        metaPath="@com.sap.vocabularies.UI.v1.LineItem"
+                        filterBar="supplierFilterBar"
+                        selectionMode="None"
+                        header="{i18n>SuppliersTableHeader}"
+                        headerVisible="true"
+                        enableExport="true"
+                        enableFullScreen="true"
+                        enableAutoColumnWidth="true"
+                        isSearchable="true"
+                        personalization="Sort,Column,Filter"
+                        rowPress=".onRowPress"/>
+                </f:content>
+            </f:DynamicPage>
+        </content>
     </Page>
 </mvc:View>

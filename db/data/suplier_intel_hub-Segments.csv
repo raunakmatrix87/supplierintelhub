@@ -1,1 +1,8 @@
 ID,name
+SEG-DPS,DPS
+SEG-ELE,Electronics
+SEG-RAW,Raw Materials
+SEG-MEC,Mechanical
+SEG-REN,Renewable
+SEG-CAS,Castings
+SEG-HYD,Hydraulics

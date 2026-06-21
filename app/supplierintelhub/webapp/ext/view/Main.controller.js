@@ -1,45 +1,57 @@
 sap.ui.define(
     [
-        'sap/fe/core/PageController'
+        "sap/fe/core/PageController",
+        "sap/ui/model/Filter",
+        "sap/ui/model/FilterOperator",
+        "sap/ui/model/FilterType"
     ],
-    function(PageController) {
-        'use strict';
+    function (PageController, Filter, FilterOperator, FilterType) {
+        "use strict";
 
-        return PageController.extend('supplierintelhub.ext.view.Main', {
-            /**
-             * Called when a controller is instantiated and its View controls (if available) are already created.
-             * Can be used to modify the View before it is displayed, to bind event handlers and do other one-time initialization.
-             * @memberOf supplierintelhub.ext.view.Main
-             */
-            //  onInit: function () {
-            //      PageController.prototype.onInit.apply(this, arguments); // needs to be called to properly initialize the page controller
-            //  },
+        return PageController.extend("supplierintelhub.ext.view.Main", {
 
             /**
-             * Similar to onAfterRendering, but this hook is invoked before the controller's View is re-rendered
-             * (NOT before the first rendering! onInit() is used for that one!).
-             * @memberOf supplierintelhub.ext.view.Main
+             * Navigate to the Supplier object page when a table row is pressed.
              */
-            //  onBeforeRendering: function() {
-            //
-            //  },
+            onRowPress: function (oEvent) {
+                var oContext = oEvent.getParameter("bindingContext")
+                    || (oEvent.getSource() && oEvent.getSource().getBindingContext());
+                if (oContext) {
+                    this.routing.navigate(oContext);
+                }
+            },
 
             /**
-             * Called when the View has been rendered (so its HTML is part of the document). Post-rendering manipulations of the HTML could be done here.
-             * This hook is the same one that SAPUI5 controls get after being rendered.
-             * @memberOf supplierintelhub.ext.view.Main
+             * "All Suppliers" / "My Suppliers" segmented toggle.
+             * Applies an application-level filter on the macros table binding so it
+             * coexists with FilterBar conditions and table personalization.
              */
-            //  onAfterRendering: function() {
-            //
-            //  },
+            onSupplierScopeChange: function (oEvent) {
+                var sKey = oEvent.getParameter("item").getKey();
+                var oBinding = this._getSuppliersBinding();
+                if (!oBinding) {
+                    return;
+                }
+                var aFilters = (sKey === "mine")
+                    ? [new Filter("responsible", FilterOperator.EQ, "Sarah P.")]
+                    : [];
+                oBinding.filter(aFilters, FilterType.Application);
+            },
 
             /**
-             * Called when the Controller is destroyed. Use this one to free resources and finalize activities.
-             * @memberOf supplierintelhub.ext.view.Main
+             * Resolves the OData V4 list binding of the macros:Table building block.
              */
-            //  onExit: function() {
-            //
-            //  }
+            _getSuppliersBinding: function () {
+                var oTableAPI = this.byId("suppliersTable");
+                if (!oTableAPI) {
+                    return null;
+                }
+                var oTable = oTableAPI.getContent ? oTableAPI.getContent() : oTableAPI;
+                if (oTable && oTable.getRowBinding) {
+                    return oTable.getRowBinding();
+                }
+                return oTable && oTable.getBinding ? oTable.getBinding("items") : null;
+            }
         });
     }
 );

@@ -1,21 +1,24 @@
 namespace suplier_intel_hub;
 
-using { cuid, managed } from '@sap/cds/common';
+using { managed } from '@sap/cds/common';
+
+// Human-readable string keys (data uses IDs like SUP-001, SEG-MEC, PLT-AR)
+aspect sid { key ID : String(40); }
 
 // ─── Reference / Master Data ────────────────────────────────────────────────
 
-entity Segments : cuid {
+entity Segments : sid {
   name : String(100) @title: 'Segment';
 }
 
-entity Plants : cuid {
+entity Plants : sid {
   name     : String(100) @title: 'Plant';
   location : String(100) @title: 'Location';
 }
 
 // ─── Core Supplier ──────────────────────────────────────────────────────────
 
-entity Suppliers : cuid, managed {
+entity Suppliers : sid, managed {
   name               : String(200)        @title: 'Supplier Name'         @mandatory;
   segment            : Association to Segments;
   plant              : Association to Plants;
@@ -49,7 +52,7 @@ entity Suppliers : cuid, managed {
 
 // ─── Quality Claims ─────────────────────────────────────────────────────────
 
-entity QualityClaims : cuid, managed {
+entity QualityClaims : sid, managed {
   supplier    : Association to Suppliers;
   claimNumber : String(50)   @title: 'Claim Number';
   status      : String(30)   @title: 'Status'
@@ -72,7 +75,7 @@ entity QualityClaims : cuid, managed {
 
 // ─── Spend Data (yearly) ────────────────────────────────────────────────────
 
-entity SpendData : cuid {
+entity SpendData : sid {
   supplier : Association to Suppliers;
   year     : Integer  @title: 'Year';
   amount   : Decimal(15,2) @title: 'Spend Amount (EUR)';
@@ -80,7 +83,7 @@ entity SpendData : cuid {
 
 // ─── On-Time Delivery (monthly) ─────────────────────────────────────────────
 
-entity DeliveryData : cuid {
+entity DeliveryData : sid {
   supplier       : Association to Suppliers;
   year           : Integer       @title: 'Year';
   month          : Integer       @title: 'Month';  // 1-12
@@ -91,7 +94,7 @@ entity DeliveryData : cuid {
 
 // ─── Parts Per Million (monthly defect rate) ────────────────────────────────
 
-entity PPMData : cuid {
+entity PPMData : sid {
   supplier   : Association to Suppliers;
   year       : Integer       @title: 'Year';
   month      : Integer       @title: 'Month';  // 1-12
@@ -101,7 +104,7 @@ entity PPMData : cuid {
 
 // ─── AI-Generated Insights ──────────────────────────────────────────────────
 
-entity Insights : cuid, managed {
+entity Insights : sid, managed {
   supplier    : Association to Suppliers;
   type        : String(50)   @title: 'Insight Type'
     @assert.range enum {
@@ -127,7 +130,7 @@ entity Insights : cuid, managed {
 
 // ─── Contacts ───────────────────────────────────────────────────────────────
 
-entity Contacts : cuid {
+entity Contacts : sid {
   supplier  : Association to Suppliers;
   name      : String(100) @title: 'Name';
   role      : String(100) @title: 'Role';
@@ -138,7 +141,7 @@ entity Contacts : cuid {
 
 // ─── Performance Reviews ────────────────────────────────────────────────────
 
-entity PerformanceReviews : cuid, managed {
+entity PerformanceReviews : sid, managed {
   supplier    : Association to Suppliers;
   reviewDate  : Date         @title: 'Review Date';
   reviewer    : String(100)  @title: 'Reviewer';

@@ -49,7 +49,8 @@
       "libs": {
         "sap.m": {},
         "sap.ui.core": {},
-        "sap.fe.core": {}
+        "sap.fe.core": {},
+        "sap.uxap": {}
       }
     },
     "contentDensities": {
@@ -87,6 +88,11 @@
           "name": "SuppliersMain",
           "pattern": ":?query:",
           "target": "SuppliersMain"
+        },
+        {
+          "name": "SupplierObjectPage",
+          "pattern": "Suppliers({key}):?query:",
+          "target": "SupplierObjectPage"
         }
       ],
       "targets": {
@@ -99,6 +105,18 @@
               "navigation": {},
               "contextPath": "/Suppliers",
               "viewName": "supplierintelhub.ext.view.Main"
+            }
+          }
+        },
+        "SupplierObjectPage": {
+          "type": "Component",
+          "id": "SupplierObjectPage",
+          "name": "sap.fe.core.fpm",
+          "options": {
+            "settings": {
+              "navigation": {},
+              "contextPath": "/Suppliers",
+              "viewName": "supplierintelhub.ext.view.SupplierObjectPage"
             }
           }
         }
