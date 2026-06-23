@@ -2,6 +2,7 @@
   "name": "supplierintelhub",
   "version": "1.0.0",
   "dependencies": {
+    "@databricks/sql": "^1.16.0",
     "@sap/cds": "^9"
   },
   "devDependencies": {

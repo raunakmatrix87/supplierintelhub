@@ -14,6 +14,7 @@ service SupplierService @(path: '/api/supplier') {
   actions {
     action prepareForMeeting() returns String;
   };
+  function getData() returns many cds.Map;
 
   @readonly entity Segments          as projection on db.Segments;
   @readonly entity Plants            as projection on db.Plants;
