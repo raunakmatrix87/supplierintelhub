@@ -58,7 +58,7 @@ module.exports = cds.service.impl(async function () {
         LIMIT 100
       `;
 
-      const rows = await queryDatabricks('SELECT * FROM bs_db_dev.proc_silver.`d_spend_pmt_2025-curryear` LIMIT 100');
+      const rows = await queryDatabricks('SELECT * FROM bs_db_dev.proc_silver.`fiori_mv_supplier_list` LIMIT 100');
       return rows; // matches: returns many cds.Map
     } catch (err) {
       console.error('Databricks getData failed:', err);
