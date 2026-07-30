@@ -18,11 +18,16 @@ annotate service.Suppliers with @(
 );
 
 // ─── SpendData: aggregation + Spend Development column chart ──────────────────
+//
+// fiori_mv_spend_by_year is one row per vendor per YEAR — there is no date or
+// month column, so `year` is both the filter field and the chart dimension.
+// The object page's period buttons (Last 3 / 5 / All Years) apply a numeric
+// "year >= " condition on this field instead of the old semantic-date filter.
 annotate service.SpendData with @(
   Aggregation.ApplySupported : {
     $Type                  : 'Aggregation.ApplySupportedType',
     Transformations        : [ 'aggregate', 'groupby', 'filter' ],
-    GroupableProperties    : [ date, yearMonth, year ],
+    GroupableProperties    : [ year ],
     AggregatableProperties : [ { $Type:'Aggregation.AggregatablePropertyType', Property: amount } ]
   },
   Analytics.AggregatedProperty #totalSpend : {
@@ -32,16 +37,16 @@ annotate service.SpendData with @(
     AggregationMethod    : 'sum',
     ![@Common.Label]     : 'Spend Amount (EUR)'
   },
-  // date is the filterable field driven by the period buttons (hidden FilterBar)
-  UI.SelectionFields : [ date ],
+  // year is the filterable field driven by the period buttons (hidden FilterBar)
+  UI.SelectionFields : [ year ],
   UI.Chart : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Spend Development',
     ChartType       : #Column,
-    Dimensions      : [ date ],
+    Dimensions      : [ year ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#totalSpend] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: date, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',

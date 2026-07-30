@@ -2,7 +2,9 @@ namespace suplier_intel_hub;
 
 using { managed } from '@sap/cds/common';
 
-// Human-readable string keys (data uses IDs like SUP-001, SEG-MEC, PLT-AR)
+// Human-readable string keys.
+// For Suppliers, ID holds the Databricks business key SourceSystemVendorNumber
+// verbatim. Reference data (Segments, Plants) uses IDs like SEG-MEC, PLT-AR.
 aspect sid { key ID : String(40); }
 
 // ─── Reference / Master Data ────────────────────────────────────────────────
@@ -18,10 +20,17 @@ entity Plants : sid {
 
 // ─── Core Supplier ──────────────────────────────────────────────────────────
 
+// ID = SourceSystemVendorNumber (unique per row in fiori_mv_supplier_list).
+// vendorNumber repeats the key as a displayable field.
 entity Suppliers : sid, managed {
+  vendorNumber       : String(40)         @title: 'Vendor Number';
   name               : String(200)        @title: 'Supplier Name'         @mandatory;
   segment            : Association to Segments;
   plant              : Association to Plants;
+  // Databricks delivers segment and plant as plain strings, not as keys into
+  // the master lists, so they are carried flat as well.
+  segmentText        : String(100)        @title: 'Segment';
+  plantText          : String(100)        @title: 'Danfoss Plant';
   responsible        : String(100)        @title: 'Supplier Responsible';
   category           : String(100)        @title: 'Category';
   subcategory        : String(100)        @title: 'Subcategory';
@@ -35,9 +44,10 @@ entity Suppliers : sid, managed {
       Expired       = 'Expired';
     };
   isTopSupplier      : Boolean            @title: 'Top Supplier'          default false;
-  // Virtual KPIs (computed in service)
+  // KPIs delivered ready-made by fiori_mv_supplier_list.
+  // currentPPM and currentOTD are `double` in Databricks, hence Decimal here.
   activeQualityClaims : Integer           @title: 'Active Quality Claims'  @Core.Computed;
-  currentPPM          : Integer           @title: 'Current PPM'            @Core.Computed;
+  currentPPM          : Decimal(9,2)      @title: 'Current PPM'            @Core.Computed;
   currentOTD          : Decimal(5,2)      @title: 'On-Time Delivery %'    @Core.Computed;
 
   // Associations
@@ -48,6 +58,11 @@ entity Suppliers : sid, managed {
   insights       : Composition of many Insights       on insights.supplier      = $self;
   contacts       : Composition of many Contacts       on contacts.supplier      = $self;
   performanceReviews : Composition of many PerformanceReviews on performanceReviews.supplier = $self;
+
+  // Dashboard datasets (all derived from Databricks at read time)
+  deliveryBySite  : Composition of many DeliveryBySite  on deliveryBySite.supplier  = $self;
+  complianceItems : Composition of many ComplianceItems on complianceItems.supplier = $self;
+  otdSummary      : Composition of many OTDSummary      on otdSummary.supplier      = $self;
 }
 
 // ─── Quality Claims ─────────────────────────────────────────────────────────
@@ -74,24 +89,122 @@ entity QualityClaims : sid, managed {
 }
 
 // ─── Spend Data (yearly) ────────────────────────────────────────────────────
-
+//
+// Maps fiori_mv_spend_by_year one-to-one. The grain is one row per vendor per
+// YEAR — the source has no month or date column, so `year` is the chart
+// dimension. (An earlier draft assumed a monthly `date`; that was wrong.)
+//
 entity SpendData : sid {
-  supplier  : Association to Suppliers;
-  date      : Date         @title: 'Date';
-  yearMonth : String(7)    @title: 'Period';   // e.g. '2026-06' - chart dimension
-  year      : Integer      @title: 'Year';
-  amount    : Decimal(15,2) @title: 'Spend Amount (EUR)';
+  supplier     : Association to Suppliers;
+  vendorNumber : String(40)     @title: 'Vendor Number';
+  supplierName : String(200)    @title: 'Supplier';
+  year         : Integer        @title: 'Year';          // chart dimension
+  yearLabel    : String(4)      @title: 'Year';          // string axis label
+  amount       : Decimal(15,2)  @title: 'Spend Amount (EUR)';
 }
 
 // ─── On-Time Delivery (monthly) ─────────────────────────────────────────────
-
+//
+// Derived in the service from the Databricks PO line-item view:
+//   OTD% = on-time line items / total required line items
+// Two tolerance windows are carried so the trend chart can plot both series
+// without a second warehouse round-trip.
+//
 entity DeliveryData : sid {
   supplier       : Association to Suppliers;
+  plant          : Association to Plants;
+  plantName      : String(100)   @title: 'Danfoss Site';
+
   year           : Integer       @title: 'Year';
   month          : Integer       @title: 'Month';  // 1-12
-  onTimePercent  : Decimal(5,2)  @title: 'On-Time Delivery %';
-  totalOrders    : Integer       @title: 'Total Orders';
-  onTimeOrders   : Integer       @title: 'On-Time Orders';
+  yearMonth      : String(7)     @title: 'Period';        // '2025-07' — chart dimension
+  monthLabel     : String(12)    @title: 'Month';         // 'Jul'     — chart axis label
+
+  // Primary series, legend "OTD% (-3 -0)": up to 3 days early, never late.
+  onTimePercent         : Decimal(5,2) @title: 'On-Time Delivery %';
+  // Secondary series, legend "OTD% (-5 +1)": up to 5 days early, 1 day late.
+  onTimePercentTolerant : Decimal(5,2) @title: 'OTD % (-5 +1)';
+
+  totalOrders          : Integer      @title: 'Total Line Items';
+  onTimeOrders         : Integer      @title: 'On-Time Line Items';
+  onTimeOrdersTolerant : Integer      @title: 'On-Time Line Items (-5 +1)';
+  avgDelayDays         : Decimal(6,2) @title: 'Avg Delay (Days)';
+
+  targetPercent  : Decimal(5,2)  @title: 'Target %';
+  // Forecast periods render as the dotted continuation of the line.
+  isForecast     : Boolean       @title: 'Forecast'  default false;
+  criticality    : Integer       @title: 'Criticality';   // 0 none 1 neg 2 crit 3 pos
+}
+
+// ─── On-Time Delivery per Danfoss site ──────────────────────────────────────
+//
+// Feeds the "On Time Delivery at Danfoss Sites" horizontal bar chart.
+//
+entity DeliveryBySite : sid {
+  supplier       : Association to Suppliers;
+  plant          : Association to Plants;
+  plantName      : String(100)   @title: 'Danfoss Site';
+  plantCode      : String(40)    @title: 'Plant Code';
+
+  onTimePercent         : Decimal(5,2) @title: 'On-Time Delivery %';
+  onTimePercentTolerant : Decimal(5,2) @title: 'OTD % (-5 +1)';
+
+  totalOrders    : Integer       @title: 'Total Line Items';
+  onTimeOrders   : Integer       @title: 'On-Time Line Items';
+
+  fromPeriod     : String(7)     @title: 'From Period';
+  toPeriod       : String(7)     @title: 'To Period';
+  targetPercent  : Decimal(5,2)  @title: 'Target %';
+  criticality    : Integer       @title: 'Criticality';
+}
+
+// ─── On-Time Delivery KPI roll-up ───────────────────────────────────────────
+//
+// Feeds the "On Time Delivery - Average Results" card: the big 82.1% number
+// plus the trend arrow and "Trending Down" text.
+//
+entity OTDSummary : sid {
+  supplier        : Association to Suppliers;
+  averagePercent  : Decimal(5,1)  @title: 'Average OTD %';
+  latestPercent   : Decimal(5,2)  @title: 'Latest Month %';
+  previousPercent : Decimal(5,2)  @title: 'Previous Month %';
+  deltaPercent    : Decimal(6,2)  @title: 'Change (pp)';
+  trend           : String(10)    @title: 'Trend'
+    @assert.range enum {
+      Up   = 'Up';
+      Down = 'Down';
+      Flat = 'Flat';
+    };
+  trendDirection  : Integer       @title: 'Trend Direction';   // 1 / 0 / -1
+  periodCount     : Integer       @title: 'Periods';
+  fromPeriod      : String(7)     @title: 'From Period';
+  toPeriod        : String(7)     @title: 'To Period';
+  targetPercent   : Decimal(5,2)  @title: 'Target %';
+  criticality     : Integer       @title: 'Criticality';
+}
+
+// ─── Overall Compliance ─────────────────────────────────────────────────────
+//
+// One row per supplier per tracked standard. The service always emits the full
+// configured set, so a standard missing in Databricks shows as 'Unknown'
+// rather than silently dropping off the card.
+//
+entity ComplianceItems : sid {
+  supplier          : Association to Suppliers;
+  standardKey       : String(40)  @title: 'Standard Key';
+  standard          : String(100) @title: 'Standard';
+  status            : String(20)  @title: 'Status'
+    @assert.range enum {
+      Compliant    = 'Compliant';
+      Noncompliant = 'Noncompliant';
+      Unknown      = 'Unknown';
+    };
+  validFrom         : Date        @title: 'Valid From';
+  validTo           : Date        @title: 'Valid To';
+  certificateNumber : String(100) @title: 'Certificate No.';
+  plantName         : String(100) @title: 'Plant';
+  sequence          : Integer     @title: 'Sequence';
+  criticality       : Integer     @title: 'Criticality';
 }
 
 // ─── Parts Per Million (monthly defect rate) ────────────────────────────────

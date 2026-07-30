@@ -6,13 +6,17 @@ sap.ui.define(
     function (PageController, StateUtil) {
         "use strict";
 
-        // Maps the segmented-button keys to MDC's built-in semantic date operators,
-        // which are evaluated relative to "today" by the framework.
-        var PERIOD_OPERATOR = {
-            month:   "THISMONTH",
-            quarter: "THISQUARTER",
-            year:    "THISYEAR"
+        // fiori_mv_spend_by_year has one row per vendor per YEAR — there is no
+        // month or date column — so the period buttons filter the numeric `year`
+        // field directly ("year >= currentYear - N + 1") instead of using MDC's
+        // semantic date operators, which only apply to Date/DateTime fields.
+        // Keep in sync with srv/lib/dbx-config.js → SPEND.periods.
+        var PERIOD_YEARS = {
+            "3": 3,
+            "5": 5,
+            "all": null
         };
+        var DEFAULT_PERIOD = "3";
 
         return PageController.extend("supplierintelhub.ext.view.SupplierObjectPage", {
 
@@ -21,7 +25,7 @@ sap.ui.define(
                 this._periodInitDone = false;
             },
 
-            // Apply the default period ("This Year") once the filter bar is ready.
+            // Apply the default period once the filter bar is ready.
             onAfterRendering: function () {
                 if (this._periodInitDone) {
                     return;
@@ -30,7 +34,7 @@ sap.ui.define(
                 if (oFilterBar && oFilterBar.initialized) {
                     this._periodInitDone = true;
                     oFilterBar.initialized().then(function () {
-                        this._applyPeriod("quarter");
+                        this._applyPeriod(DEFAULT_PERIOD);
                     }.bind(this));
                 }
             },
@@ -39,17 +43,23 @@ sap.ui.define(
                 this._applyPeriod(oEvent.getParameter("item").getKey());
             },
 
+            /**
+             * "Last N Years" → year >= (currentYear - N + 1), so N=3 in 2026
+             * keeps 2024-2026. "All" clears the filter entirely.
+             */
             _applyPeriod: function (sKey) {
                 var oFilterBar = this._getSpendFilterBar();
                 if (!oFilterBar) {
                     return;
                 }
-                var sOperator = PERIOD_OPERATOR[sKey];
-                var aConditions = sOperator
-                    ? [{ operator: sOperator, values: [] }]   // "All" -> [] clears the filter
-                    : [];
+                var iSpanYears = PERIOD_YEARS[sKey];
+                var aConditions = [];
+                if (iSpanYears) {
+                    var iMinYear = new Date().getFullYear() - iSpanYears + 1;
+                    aConditions = [{ operator: "GE", values: [iMinYear] }];
+                }
                 StateUtil.applyExternalState(oFilterBar, {
-                    filter: { date: aConditions }
+                    filter: { year: aConditions }
                 });
             },
 

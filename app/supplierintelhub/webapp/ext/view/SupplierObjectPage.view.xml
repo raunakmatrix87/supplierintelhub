@@ -67,12 +67,11 @@
                                 <ToolbarSpacer/>
                                 <SegmentedButton
                                     id="spendPeriod"
-                                    selectedKey="quarter"
+                                    selectedKey="3"
                                     selectionChange=".onSpendPeriodChange">
                                     <items>
-                                        <SegmentedButtonItem key="month" text="This Month"/>
-                                        <SegmentedButtonItem key="quarter" text="This Quarter"/>
-                                        <SegmentedButtonItem key="year" text="This Year"/>
+                                        <SegmentedButtonItem key="3" text="Last 3 Years"/>
+                                        <SegmentedButtonItem key="5" text="Last 5 Years"/>
                                         <SegmentedButtonItem key="all" text="All"/>
                                     </items>
                                 </SegmentedButton>
