@@ -11,68 +11,68 @@
         upperCaseAnchorBar="false"
         enableLazyLoading="false">
         <uxap:headerTitle>
-            <uxap:ObjectPageDynamicHeaderTitle>
+            <uxap:ObjectPageDynamicHeaderTitle id="_IDGenObjectPageDynamicHeaderTitle">
                 <uxap:heading>
-                    <Title text="{name}" level="H2"/>
+                    <Title id="_IDGenTitle" text="{name}" level="H2"/>
                 </uxap:heading>
                 <uxap:snappedContent>
-                    <Text text="{segmentName}"/>
+                    <Text id="_IDGenText" text="{segmentName}"/>
                 </uxap:snappedContent>
                 <uxap:expandedContent>
-                    <Text text="{segmentName}"/>
+                    <Text id="_IDGenText1" text="{segmentName}"/>
                 </uxap:expandedContent>
                 <uxap:actions>
-                    <ObjectStatus
+                    <ObjectStatus id="_IDGenObjectStatus"
                         text="{complianceStatus}"
                         state="{= ${complianceStatus} === 'OK' ? 'Success' : (${complianceStatus} === 'Expired' ? 'Error' : 'Warning') }"/>
                 </uxap:actions>
             </uxap:ObjectPageDynamicHeaderTitle>
         </uxap:headerTitle>
         <uxap:headerContent>
-            <FlexBox wrap="Wrap" alignItems="Start" class="sapUiSmallMarginTop">
-                <VBox class="sapUiLargeMarginEnd">
-                    <Label text="Category"/>
-                    <Text text="{category}"/>
-                    <Label text="Subcategory" class="sapUiSmallMarginTop"/>
-                    <Text text="{subcategory}"/>
+            <FlexBox id="headerContentFlexBox" wrap="Wrap" alignItems="Start" class="sapUiSmallMarginTop">
+                <VBox id="_IDGenVBox" class="sapUiLargeMarginEnd">
+                    <Label id="_IDGenLabel" text="Category"/>
+                    <Text id="_IDGenText2" text="{category}"/>
+                    <Label id="_IDGenLabel1" text="Subcategory" class="sapUiSmallMarginTop"/>
+                    <Text id="_IDGenText3" text="{subcategory}"/>
                 </VBox>
-                <VBox class="sapUiLargeMarginEnd">
-                    <Label text="Main Supplies"/>
-                    <Text text="{mainSupplies}"/>
-                    <Label text="Supplier Responsible" class="sapUiSmallMarginTop"/>
-                    <Text text="{responsible}"/>
+                <VBox id="_IDGenVBox1" class="sapUiLargeMarginEnd">
+                    <Label id="_IDGenLabel2" text="Main Supplies"/>
+                    <Text id="_IDGenText4" text="{mainSupplies}"/>
+                    <Label id="_IDGenLabel3" text="Supplier Responsible" class="sapUiSmallMarginTop"/>
+                    <Text id="_IDGenText5" text="{responsible}"/>
                 </VBox>
-                <VBox class="sapUiLargeMarginEnd">
-                    <Label text="Next Review"/>
-                    <Text text="{nextReview}"/>
-                    <Label text="Danfoss Plant" class="sapUiSmallMarginTop"/>
-                    <Text text="{plantName}"/>
+                <VBox id="_IDGenVBox2" class="sapUiLargeMarginEnd">
+                    <Label id="_IDGenLabel4" text="Next Review"/>
+                    <Text id="_IDGenText6" text="{nextReview}"/>
+                    <Label id="_IDGenLabel5" text="Danfoss Plant" class="sapUiSmallMarginTop"/>
+                    <Text id="_IDGenText7" text="{plantName}"/>
                 </VBox>
-                <VBox class="sapUiLargeMarginEnd">
-                    <Label text="Active Quality Claims"/>
-                    <ObjectNumber number="{activeQualityClaims}"/>
+                <VBox id="_IDGenVBox3" class="sapUiLargeMarginEnd">
+                    <Label id="_IDGenLabel6" text="Active Quality Claims"/>
+                    <ObjectNumber id="_IDGenObjectNumber" number="{activeQualityClaims}"/>
                 </VBox>
-                <VBox>
-                    <Label text="Score"/>
-                    <ObjectNumber number="{score}" unit="/ 10" emphasized="true"/>
+                <VBox id="_IDGenVBox4">
+                    <Label id="_IDGenLabel7" text="Score"/>
+                    <ObjectNumber id="_IDGenObjectNumber1" number="{score}" unit="/ 10" emphasized="true"/>
                 </VBox>
             </FlexBox>
         </uxap:headerContent>
         <uxap:sections>
-            <uxap:ObjectPageSection title="Spend Development" titleUppercase="false">
+            <uxap:ObjectPageSection id="_IDGenObjectPageSection1" title="Spend Development" titleUppercase="false">
                 <uxap:subSections>
-                    <uxap:ObjectPageSubSection>
-                        <VBox>
-                            <OverflowToolbar>
-                                <ToolbarSpacer/>
+                    <uxap:ObjectPageSubSection id="_IDGenObjectPageSubSection">
+                        <VBox id="_IDGenVBox5">
+                            <OverflowToolbar id="_IDGenOverflowToolbar">
+                                <ToolbarSpacer id="_IDGenToolbarSpacer"/>
                                 <SegmentedButton
                                     id="spendPeriod"
                                     selectedKey="3"
                                     selectionChange=".onSpendPeriodChange">
                                     <items>
-                                        <SegmentedButtonItem key="3" text="Last 3 Years"/>
-                                        <SegmentedButtonItem key="5" text="Last 5 Years"/>
-                                        <SegmentedButtonItem key="all" text="All"/>
+                                        <SegmentedButtonItem id="_IDGenSegmentedButtonItem" key="3" text="Last 3 Years"/>
+                                        <SegmentedButtonItem id="_IDGenSegmentedButtonItem1" key="5" text="Last 5 Years"/>
+                                        <SegmentedButtonItem id="_IDGenSegmentedButtonItem2" key="all" text="All"/>
                                     </items>
                                 </SegmentedButton>
                             </OverflowToolbar>
@@ -88,6 +88,28 @@
                                 filterBar="spendFilterBar"
                                 selectionMode="None"/>
                         </VBox>
+                    </uxap:ObjectPageSubSection>
+                </uxap:subSections>
+            </uxap:ObjectPageSection>
+            <uxap:ObjectPageSection id="_IDGenObjectPageSection2" title="Parts Per Million" titleUppercase="false">
+                <uxap:subSections>
+                    <uxap:ObjectPageSubSection id="_IDGenObjectPageSubSection1">
+                        <!-- Both charts read ppmData; they differ only in the
+                             grouping dimension (month vs. year). -->
+                        <FlexBox id="_IDGenFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true">
+                            <VBox id="_IDGenVBox6" class="sapUiSmallMarginEnd" width="48%" minWidth="22rem">
+                                <macros:Chart
+                                    id="ppmTrendChart"
+                                    metaPath="ppmData/@com.sap.vocabularies.UI.v1.Chart#PpmTrend"
+                                    selectionMode="None"/>
+                            </VBox>
+                            <VBox id="_IDGenVBox7" width="48%" minWidth="22rem">
+                                <macros:Chart
+                                    id="ppmYoYChart"
+                                    metaPath="ppmData/@com.sap.vocabularies.UI.v1.Chart#PpmYoY"
+                                    selectionMode="None"/>
+                            </VBox>
+                        </FlexBox>
                     </uxap:ObjectPageSubSection>
                 </uxap:subSections>
             </uxap:ObjectPageSection>

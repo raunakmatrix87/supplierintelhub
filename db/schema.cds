@@ -208,11 +208,21 @@ entity ComplianceItems : sid {
 }
 
 // ─── Parts Per Million (monthly defect rate) ────────────────────────────────
-
+//
+// Maps q_ppm_opm2 one-to-one. `Cal. year / month`
+// arrives as 'mm.yyyy' (e.g. '04.2026'); it is split into numeric year/month
+// plus a short calendar label ('Apr') for chart axes — mirroring the
+// year/month + monthLabel pair already used on DeliveryData.
+//
 entity PPMData : sid {
   supplier   : Association to Suppliers;
   year       : Integer       @title: 'Year';
   month      : Integer       @title: 'Month';  // 1-12
+  monthLabel : String(12)    @title: 'Month';  // 'Apr' — chart axis label
+  // 'YYYY-MM'. The monthly chart groups on this rather than monthLabel so the
+  // same month in two different years stays two columns instead of averaging
+  // into one.
+  yearMonth  : String(7)     @title: 'Period';
   ppm        : Integer       @title: 'PPM';
   target     : Integer       @title: 'Target PPM' default 500;
 }
