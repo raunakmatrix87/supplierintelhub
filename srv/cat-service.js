@@ -18,21 +18,24 @@ const cds = require('@sap/cds');
 
 const dbx = require('./lib/dbx');
 const {
-  fq, TABLES, SUPPLIER_COLUMNS: SC, SPEND_COLUMNS: SPC, OTD, COMPLIANCE_STANDARDS,
+  fq, fqPpm, TABLES, SUPPLIER_COLUMNS: SC, SPEND_COLUMNS: SPC, PPM_COLUMNS: PPMC,
+  OTD, COMPLIANCE_STANDARDS,
 } = require('./lib/dbx-config');
 const otd = require('./lib/otd');
 const compliance = require('./lib/compliance');
 
 const LOG = cds.log('supplier-service');
 
-// ─── Base SQL for the two confirmed views ───────────────────────────────────
-
+// ─── Base SQL for the confirmed views/tables ──────────────────────────
 const SUPPLIER_SQL = `SELECT * FROM ${fq(TABLES.supplierList)}`;
 const SPEND_SQL    = `SELECT * FROM ${fq(TABLES.spendByYear)}`;
 
-// ─── Row mappers ────────────────────────────────────────────────────────────
+// PPM lives in a separate reporting catalog/schema, hence fqPpm() not fq().
+const PPM_SQL      = `SELECT * FROM ${fqPpm(TABLES.ppmData)}`;
 
-const { clean, num, round, supplierIdFrom } = dbx;
+// ─── Row mappers ────────────────────────────────────────────
+
+const { clean, num, round, supplierIdFrom, monthShort } = dbx;
 
 /** fiori_mv_supplier_list → SupplierService.Suppliers */
 function mapSupplierRow(row) {
@@ -84,6 +87,39 @@ function mapSpendRow(row) {
     year,
     yearLabel:    year === null ? null : String(year),
     amount:       round(row[SPC.amount], 2),
+  };
+}
+
+/**
+ * bs_db_sql_bs_reporting.dbo.q_ppm_opm2 → SupplierService.PPMData
+ *
+ * `Cal. year / month` arrives as a single 'mm.yyyy' string (e.g. '04.2026').
+ * It is split into numeric month/year plus a short calendar label ('Apr')
+ * for chart axes, mirroring DeliveryData's month/monthLabel pair. Target has
+ * no source column — the view carries only the actual PPM qty — so it is
+ * fixed at the same 500 default the CDS field declares.
+ */
+function mapPpmRow(row) {
+  const vendor = supplierIdFrom(row[PPMC.vendorNumber]);
+
+  const raw = clean(row[PPMC.yearMonth]);
+  const [monthPart, yearPart] = raw ? String(raw).split('.') : [null, null];
+  const month = num(monthPart);
+  const year  = num(yearPart);
+
+  return {
+    ID:          [vendor, year, month].filter((v) => v !== null).join('-') || cds.utils.uuid(),
+    supplier_ID: vendor,
+    year,
+    month,
+    monthLabel: monthShort(month),
+    // 'YYYY-MM' — the monthly chart's dimension. monthLabel alone would merge
+    // e.g. Apr 2024 and Apr 2025 into a single averaged column.
+    yearMonth:  (year === null || month === null)
+      ? null
+      : `${year}-${String(month).padStart(2, '0')}`,
+    ppm:        num(row[PPMC.ppm]),
+    target:     500,
   };
 }
 
@@ -299,7 +335,7 @@ function applyAggregation(rows, SELECT) {
 
   const groups = new Map();
   for (const row of rows) {
-    const key = groupKeys.map((k) => row[k]).join('');
+    const key = groupKeys.map((k) => row[k]).join('\x01');
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
@@ -487,6 +523,21 @@ module.exports = cds.service.impl(async function () {
     return rows.map(mapSpendRow).sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
   }));
 
+  // ─── PPM (monthly) ───────────────────────────────────────────
+  this.on('READ', 'PPMData', serveFromDatabricks('PPMData', async () => {
+    const rows = await dbx.query(PPM_SQL);
+    LOG.info(`PPMData: fetched ${rows.length} raw row(s) from Databricks (${TABLES.ppmData})`);
+    if (rows.length) LOG.info('PPMData: sample raw row(s)', rows.slice(0, 3));
+
+    const mapped = rows.map(mapPpmRow);
+    LOG.info(`PPMData: mapped ${mapped.length} row(s) to CDS schema`);
+    if (mapped.length) LOG.info('PPMData: sample mapped row(s)', mapped.slice(0, 3));
+
+    // Ascending year/month so the trend chart reads left-to-right without
+    // relying on the client to sort.
+    return mapped.sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || (a.month ?? 0) - (b.month ?? 0));
+  }));
+
   // ─── Dashboard datasets ───────────────────────────────────────────────────
 
   this.on('READ', 'DeliveryData',    serveFromDatabricks('DeliveryData', loadMonthlyOtd));
@@ -589,3 +640,8 @@ module.exports.applyFilter = applyFilter;
 module.exports.applyOrderBy = applyOrderBy;
 module.exports.applyAggregation = applyAggregation;
 module.exports.extractNavigationSupplierId = extractNavigationSupplierId;
+
+module.exports.mapPpmRow = mapPpmRow;
+module.exports.mapSpendRow = mapSpendRow;
+module.exports.mapSupplierRow = mapSupplierRow;
+module.exports.PPM_SQL = PPM_SQL;

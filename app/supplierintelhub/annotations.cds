@@ -54,3 +54,69 @@ annotate service.SpendData with @(
     ]
   }
 );
+
+// ─── PPMData: aggregation + two Parts Per Million column charts ───────────────
+//
+// q_ppm_opm2 is one row per vendor per MONTH. Both charts read the same rows
+// and differ only in the grouping dimension:
+//
+//   #PpmTrend — average PPM per calendar month ('YYYY-MM'), the running trend
+//   #PpmYoY   — average PPM per year, the year-over-year comparison
+//
+// Averaging is deliberate: PPM is a rate (defective parts per million), so
+// summing monthly values across a year would produce a meaningless number.
+// The READ handler returns rows already ordered by year/month, and the
+// in-memory grouping in cat-service.js preserves that order, so both charts
+// come out chronological without an explicit PresentationVariant.
+annotate service.PPMData with @(
+  Aggregation.ApplySupported : {
+    $Type                  : 'Aggregation.ApplySupportedType',
+    Transformations        : [ 'aggregate', 'groupby', 'filter', 'orderby' ],
+    GroupableProperties    : [ yearMonth, monthLabel, year, month ],
+    AggregatableProperties : [
+      { $Type:'Aggregation.AggregatablePropertyType', Property: ppm },
+      { $Type:'Aggregation.AggregatablePropertyType', Property: target }
+    ]
+  },
+  Analytics.AggregatedProperty #avgPpm : {
+    $Type                : 'Analytics.AggregatedPropertyType',
+    Name                 : 'avgPpm',
+    AggregatableProperty : ppm,
+    AggregationMethod    : 'average',
+    ![@Common.Label]     : 'PPM'
+  },
+
+  // "Parts Per Million" — monthly trend.
+  UI.Chart #PpmTrend : {
+    $Type           : 'UI.ChartDefinitionType',
+    Title           : 'Parts Per Million',
+    Description     : 'Evidence of product quality — rates the quantity of nonconforming parts on production lines and/or at customer locations.',
+    ChartType       : #Column,
+    Dimensions      : [ yearMonth ],
+    DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgPpm] ],
+    DimensionAttributes : [
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+    ],
+    MeasureAttributes : [
+      { $Type:'UI.ChartMeasureAttributeType',
+        DynamicMeasure: ![@Analytics.AggregatedProperty#avgPpm], Role: #Axis1 }
+    ]
+  },
+
+  // "Parts Per Million - Year over Year" — same measure, grouped by year.
+  UI.Chart #PpmYoY : {
+    $Type           : 'UI.ChartDefinitionType',
+    Title           : 'Parts Per Million - Year over Year',
+    Description     : 'Year-over-year comparison',
+    ChartType       : #Column,
+    Dimensions      : [ year ],
+    DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgPpm] ],
+    DimensionAttributes : [
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
+    ],
+    MeasureAttributes : [
+      { $Type:'UI.ChartMeasureAttributeType',
+        DynamicMeasure: ![@Analytics.AggregatedProperty#avgPpm], Role: #Axis1 }
+    ]
+  }
+);
