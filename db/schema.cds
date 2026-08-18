@@ -185,12 +185,19 @@ entity OTDSummary : sid {
 
 // ─── Overall Compliance ─────────────────────────────────────────────────────
 //
-// One row per supplier per tracked standard. The service always emits the full
-// configured set, so a standard missing in Databricks shows as 'Unknown'
-// rather than silently dropping off the card.
+// Two rows per supplier: 'ISO 14001' (date-only) and 'ISO 9001 / IATF 16949'
+// (either date, or a waiver, or activity marked Not relevant). The service
+// always emits both, so a supplier with nothing on file shows as 'Noncompliant'
+// rather than silently dropping off the card. The rules live in
+// COMPLIANCE_STANDARDS — see srv/lib/dbx-config.js and srv/lib/compliance.js.
 //
 entity ComplianceItems : sid {
   supplier          : Association to Suppliers;
+  // Both ends of the key chain, kept on the row so a broken join is visible in
+  // the payload: aribaId is what the compliance table carries, vendorNumber is
+  // what it resolved to via d_vendormaster (and equals supplier_ID).
+  aribaId           : String(40)  @title: 'Ariba ID';
+  vendorNumber      : String(40)  @title: 'Vendor Number';
   standardKey       : String(40)  @title: 'Standard Key';
   standard          : String(100) @title: 'Standard';
   status            : String(20)  @title: 'Status'
@@ -199,6 +206,9 @@ entity ComplianceItems : sid {
       Noncompliant = 'Noncompliant';
       Unknown      = 'Unknown';
     };
+  // Why the status reads the way it does: Certificate | Waiver | Not relevant |
+  // Expired | None. Diagnostic only — not rendered on the card.
+  basis             : String(20)  @title: 'Basis';
   validFrom         : Date        @title: 'Valid From';
   validTo           : Date        @title: 'Valid To';
   certificateNumber : String(100) @title: 'Certificate No.';

@@ -17,7 +17,10 @@ const TABLES = {
   supplierList : 'fiori_mv_supplier_list',
   spendByYear  : 'fiori_mv_spend_by_year',
   poLines      : 'fiori_mv_po_lines',
-  compliance   : 'fiori_mv_supplier_compliance',
+  // Wide table: one row per company, one expiry-date column per standard.
+  compliance   : 'compliance',
+  // Vendor master — the only place aribaid and the SAP vendor number meet.
+  vendorMaster : 'd_vendormaster',
   otdForecast  : 'fiori_mv_otd_forecast',
   ppmData      : 'q_ppm_opm2',
 };
@@ -82,53 +85,78 @@ const PO_LINE_COLUMNS = {
   deliveryDeltaDays : null,
 };
 
+// bs_db_dev.proc_silver.compliance is a WIDE table: one row per company, with
+// a separate expiry-date column per certification. There is no status column —
+// the state is derived from the date (see COMPLIANCE_STANDARDS below).
+//
+// It carries `aribaid`, NOT the SAP vendor number that Suppliers.ID is built
+// from, so it is joined to the vendor master to get there (see below).
 const COMPLIANCE_COLUMNS = {
-  vendorNumber  : 'SourceSystemVendorNumber',
-  supplierName  : 'supplier_name',
-  standard      : 'standard',
-  status        : 'status',
-  validFrom     : 'valid_from',
-  validTo       : 'valid_to',
-  certificateNo : 'certificate_number',
-  plantName     : 'plant',
+  aribaId           : 'aribaid',
+  supplierName      : 'onecompanyname',
+  // Escape hatches for the combined ISO 9001 / IATF row. `waver` is spelt that
+  // way in the source table — not a typo here.
+  waiver            : 'waver',
+  activityPerformed : 'activityperformedatthislocation',
 };
 
+/** Values of `waver` that count as a granted waiver. Compared case-insensitively. */
+const COMPLIANCE_WAIVER_VALUES = ['yes', 'y', 'true'];
+
+/**
+ * Values of `activityperformedatthislocation` that make a certificate moot.
+ * Punctuation and spacing are stripped before comparing, and both the correct
+ * and the transposed spelling are accepted because the source data uses
+ * 'Not Revelant'.
+ */
+const COMPLIANCE_NOT_RELEVANT_VALUES = ['not relevant', 'not revelant'];
+
+// d_vendormaster is the bridge: aribaid (9004722) ↔ vendornumber (1102524)
+// ↔ sourcesystem_vendornumber ('01/1102524'). Suppliers.ID is the
+// SourceSystemVendorNumber of fiori_mv_supplier_list, so the join carries both
+// candidate keys and the resolver picks whichever one the supplier list knows.
+const VENDOR_MASTER_COLUMNS = {
+  aribaId            : 'aribaid',
+  vendorNumber       : 'vendornumber',
+  sourceVendorNumber : 'sourcesystem_vendornumber',
+  vendorName         : 'vendorname',
+};
+
+/**
+ * The two rows of the Overall Compliance card, in display order.
+ *
+ *   dateColumns      expiry columns to consider. ANY one of them still valid
+ *                    (>= today) makes the row Compliant.
+ *   allowWaiver      `waver` = YES also makes it Compliant.
+ *   allowNotRelevant `activityperformedatthislocation` = 'Not relevant' also
+ *                    makes it Compliant.
+ *
+ * With none of the above satisfied the row is Noncompliant — which is also what
+ * a missing (null) date yields, since a certificate that was never captured is
+ * not evidence of anything.
+ *
+ * Row 1 is deliberately date-only: an ISO 14001 certificate is either live or
+ * it is not, and no waiver overrides that. Row 2 is the combined business rule.
+ */
 const COMPLIANCE_STANDARDS = [
-  { key: 'iso9001',   label: 'ISO 9001',   sequence: 10 },
-  { key: 'iatf16949', label: 'IATF 16949', sequence: 20 },
   {
-    key      : 'fwa',
-    label    : 'Framework Agreement FWA',
-    sequence : 30,
-    aliases  : ['frameworkagreement', 'frameworkagreementfwa'],
+    key              : 'iso14001',
+    label            : 'ISO 14001',
+    sequence         : 10,
+    dateColumns      : ['iso14001expirydate'],
+    allowWaiver      : false,
+    allowNotRelevant : false,
   },
   {
-    key      : 'codeofconduct',
-    label    : 'Code of Conduct',
-    sequence : 40,
-    aliases  : ['coc'],
+    key              : 'iso9001iatf',
+    label            : 'ISO 9001 / IATF 16949',
+    sequence         : 20,
+    dateColumns      : ['iso9001expirydate', 'iatf16949expirydate'],
+    allowWaiver      : true,
+    allowNotRelevant : true,
   },
 ];
 
-const COMPLIANCE_STATUS_MAP = {
-  compliant       : 'Compliant',
-  yes             : 'Compliant',
-  y               : 'Compliant',
-  true            : 'Compliant',
-  valid           : 'Compliant',
-  active          : 'Compliant',
-  certified       : 'Compliant',
-  ok              : 'Compliant',
-
-  noncompliant    : 'Noncompliant',
-  'non-compliant' : 'Noncompliant',
-  no              : 'Noncompliant',
-  n               : 'Noncompliant',
-  false           : 'Noncompliant',
-  invalid         : 'Noncompliant',
-  expired         : 'Noncompliant',
-  failed          : 'Noncompliant',
-};
 
 const OTD = {
   windows: {
@@ -183,7 +211,9 @@ module.exports = {
   PO_LINE_COLUMNS,
   COMPLIANCE_COLUMNS,
   COMPLIANCE_STANDARDS,
-  COMPLIANCE_STATUS_MAP,
+  COMPLIANCE_WAIVER_VALUES,
+  COMPLIANCE_NOT_RELEVANT_VALUES,
+  VENDOR_MASTER_COLUMNS,
   OTD,
   CACHE,
 };
