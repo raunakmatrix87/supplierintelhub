@@ -213,11 +213,15 @@ annotate SupplierService.OTDSummary with {
 // ─── Overall Compliance card ─────────────────────────────────────────────────
 
 annotate SupplierService.ComplianceItems with @(
+  // Standard + its expiry date + the derived state. Three rows: ISO 9001,
+  // ISO 14001, IATF 16949 — sourced from the expiry-date columns of
+  // proc_silver.compliance (see srv/lib/compliance.js). An empty Expiry Date
+  // means the certificate was never captured, which is why the row still reads
+  // Noncompliant.
   UI.LineItem #Compliance : [
     { $Type: 'UI.DataField', Value: standard, Label: 'Compliance Details' },
-    { $Type: 'UI.DataField', Value: status,   Label: 'Status', Criticality: criticality },
-    { $Type: 'UI.DataField', Value: validTo,  Label: 'Valid To' },
-    { $Type: 'UI.DataField', Value: certificateNumber, Label: 'Certificate No.' }
+    { $Type: 'UI.DataField', Value: validTo,  Label: 'Expiry Date' },
+    { $Type: 'UI.DataField', Value: status,   Label: 'Status', Criticality: criticality }
   ],
   UI.PresentationVariant #Ordered : {
     $Type          : 'UI.PresentationVariantType',

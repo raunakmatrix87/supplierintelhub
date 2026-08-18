@@ -113,6 +113,26 @@
                     </uxap:ObjectPageSubSection>
                 </uxap:subSections>
             </uxap:ObjectPageSection>
+            <uxap:ObjectPageSection id="complianceSection" title="Overall Compliance" titleUppercase="false">
+                <uxap:subSections>
+                    <uxap:ObjectPageSubSection id="complianceSubSection">
+                       
+                        <macros:Table
+                            id="complianceTable"
+                            metaPath="complianceItems/@com.sap.vocabularies.UI.v1.PresentationVariant#Ordered"
+                            type="ResponsiveTable"
+                            readOnly="true"
+                            selectionMode="None"
+                            headerVisible="false"
+                            isSearchable="false"
+                            personalization="false"
+                            variantManagement="None"
+                            enableExport="false"
+                            enableFullScreen="false"
+                            enablePaste="false"/>
+                    </uxap:ObjectPageSubSection>
+                </uxap:subSections>
+            </uxap:ObjectPageSection>
         </uxap:sections>
     </uxap:ObjectPageLayout>
 </mvc:View>
