@@ -479,12 +479,36 @@ async function loadOtdSummary() {
   return [...groups.entries()].map(([id, rows]) => otd.summarise(rows, id));
 }
 
+/**
+ * The compliance table is keyed by aribaid, so complianceSql() joins it through
+ * d_vendormaster to reach the SAP vendor number. The full supplier index (not
+ * just the name map) is handed to the mapper because it decides between the
+ * '01/1102524' and '1102524' spellings by checking which one the supplier list
+ * actually carries.
+ */
 async function loadCompliance() {
-  const [rows, { nameToIds }] = await Promise.all([
+  const [rows, index] = await Promise.all([
     dbx.query(compliance.complianceSql()),
     supplierIndex(),
   ]);
-  return compliance.mapComplianceRows(rows, nameToIds);
+
+  const items = compliance.mapComplianceRows(rows, index);
+  const matched = new Set(
+    items.map((i) => i.supplier_ID).filter((id) => index.knownIds.has(id))
+  ).size;
+
+  LOG.info(
+    `ComplianceItems: ${rows.length} joined row(s) → ${items.length} item(s) ` +
+    `across ${matched} known supplier(s).`
+  );
+  if (rows.length && !matched) {
+    LOG.warn(
+      `No compliance row resolved to a supplier. Check that ${TABLES.compliance}.` +
+      'aribaid matches d_vendormaster.aribaid, and that the resulting vendor ' +
+      `number matches ${SC.vendorNumber} in ${TABLES.supplierList}.`
+    );
+  }
+  return items;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
