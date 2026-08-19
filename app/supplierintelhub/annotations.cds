@@ -1,6 +1,5 @@
 using SupplierService as service from '../../srv/cat-service';
 
-// ─── Suppliers: List Report + Object Page header ─────────────────────────────
 annotate service.Suppliers with @(
   UI.HeaderInfo : { $Type:'UI.HeaderInfoType', TypeName:'Supplier', TypeNamePlural:'Suppliers',
     Title:{$Type:'UI.DataField',Value:name}, Description:{$Type:'UI.DataField',Value:segmentName} },
@@ -17,12 +16,6 @@ annotate service.Suppliers with @(
       Ranges:[{$Type:'UI.SelectionRangeType',Sign:#I,Option:#EQ,Low:'Sarah P.'}]}] }
 );
 
-// ─── SpendData: aggregation + Spend Development column chart ──────────────────
-//
-// fiori_mv_spend_by_year is one row per vendor per YEAR — there is no date or
-// month column, so `year` is both the filter field and the chart dimension.
-// The object page's period buttons (Last 3 / 5 / All Years) apply a numeric
-// "year >= " condition on this field instead of the old semantic-date filter.
 annotate service.SpendData with @(
   Aggregation.ApplySupported : {
     $Type                  : 'Aggregation.ApplySupportedType',
@@ -37,7 +30,6 @@ annotate service.SpendData with @(
     AggregationMethod    : 'sum',
     ![@Common.Label]     : 'Spend Amount (EUR)'
   },
-  // year is the filterable field driven by the period buttons (hidden FilterBar)
   UI.SelectionFields : [ year ],
   UI.Chart : {
     $Type           : 'UI.ChartDefinitionType',
@@ -55,19 +47,6 @@ annotate service.SpendData with @(
   }
 );
 
-// ─── PPMData: aggregation + two Parts Per Million column charts ───────────────
-//
-// q_ppm_opm2 is one row per vendor per MONTH. Both charts read the same rows
-// and differ only in the grouping dimension:
-//
-//   #PpmTrend — average PPM per calendar month ('YYYY-MM'), the running trend
-//   #PpmYoY   — average PPM per year, the year-over-year comparison
-//
-// Averaging is deliberate: PPM is a rate (defective parts per million), so
-// summing monthly values across a year would produce a meaningless number.
-// The READ handler returns rows already ordered by year/month, and the
-// in-memory grouping in cat-service.js preserves that order, so both charts
-// come out chronological without an explicit PresentationVariant.
 annotate service.PPMData with @(
   Aggregation.ApplySupported : {
     $Type                  : 'Aggregation.ApplySupportedType',
@@ -86,7 +65,6 @@ annotate service.PPMData with @(
     ![@Common.Label]     : 'PPM'
   },
 
-  // "Parts Per Million" — monthly trend.
   UI.Chart #PpmTrend : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Parts Per Million',
@@ -103,7 +81,6 @@ annotate service.PPMData with @(
     ]
   },
 
-  // "Parts Per Million - Year over Year" — same measure, grouped by year.
   UI.Chart #PpmYoY : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Parts Per Million - Year over Year',
@@ -120,3 +97,77 @@ annotate service.PPMData with @(
     ]
   }
 );
+
+annotate service.OTDData with @(
+  Aggregation.ApplySupported : {
+    $Type                  : 'Aggregation.ApplySupportedType',
+    Transformations        : [ 'aggregate', 'groupby', 'filter', 'orderby' ],
+    GroupableProperties    : [ yearMonth, monthLabel, year, month ],
+    AggregatableProperties : [
+      { $Type:'Aggregation.AggregatablePropertyType', Property: otd }
+    ]
+  },
+  Analytics.AggregatedProperty #avgOtd : {
+    $Type                : 'Analytics.AggregatedPropertyType',
+    Name                 : 'avgOtd',
+    AggregatableProperty : otd,
+    AggregationMethod    : 'average',
+    ![@Common.Label]     : 'On Time Delivery %'
+  },
+
+  UI.Chart #OtdTrend : {
+    $Type           : 'UI.ChartDefinitionType',
+    Title           : 'On Time Delivery',
+    Description     : 'The number of purchase order line items delivered on time to the required date and quantity, divided by the number of total purchase order line items required.',
+    ChartType       : #Column,
+    Dimensions      : [ yearMonth ],
+    DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOtd] ],
+    DimensionAttributes : [
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+    ],
+    MeasureAttributes : [
+      { $Type:'UI.ChartMeasureAttributeType',
+        DynamicMeasure: ![@Analytics.AggregatedProperty#avgOtd], Role: #Axis1 }
+    ]
+  },
+
+  UI.Chart #OtdYoY : {
+    $Type           : 'UI.ChartDefinitionType',
+    Title           : 'On Time Delivery - Year over Year',
+    Description     : 'Year-over-year comparison',
+    ChartType       : #Column,
+    Dimensions      : [ year ],
+    DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOtd] ],
+    DimensionAttributes : [
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
+    ],
+    MeasureAttributes : [
+      { $Type:'UI.ChartMeasureAttributeType',
+        DynamicMeasure: ![@Analytics.AggregatedProperty#avgOtd], Role: #Axis1 }
+    ]
+  },
+
+  UI.Chart #OtdAverage : {
+    $Type           : 'UI.ChartDefinitionType',
+    Title           : 'On Time Delivery - Average Results',
+    ChartType       : #Line,
+    Dimensions      : [ yearMonth ],
+    DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOtd] ],
+    DimensionAttributes : [
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+    ],
+    MeasureAttributes : [
+      { $Type:'UI.ChartMeasureAttributeType',
+        DynamicMeasure: ![@Analytics.AggregatedProperty#avgOtd], Role: #Axis1 }
+    ]
+  },
+
+  UI.LineItem #OtdMonths : [
+    { $Type:'UI.DataField', Value: yearMonth,  Label:'Period' },
+    { $Type:'UI.DataField', Value: otd,        Label:'On Time Delivery %' }
+  ]
+);
+
+annotate service.OTDData with {
+  otd @Measures.Unit: '%';
+};

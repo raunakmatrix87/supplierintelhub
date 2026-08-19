@@ -1,15 +1,3 @@
-/**
- * Databricks SQL access layer.
- *
- * Responsibilities:
- *   - one connection helper instead of the ad-hoc client in cat-service.js
- *   - TTL cache so a single dashboard render doesn't open five warehouse
- *     sessions for the same query
- *   - in-flight de-duplication (concurrent identical queries share a promise)
- *   - small helpers used by every handler: clean/num/slug/makeSupplierId
- *
- * Nothing here knows about business meaning — see otd.js / compliance.js.
- */
 
 'use strict';
 
@@ -19,11 +7,7 @@ const { CACHE } = require('./dbx-config');
 
 const LOG = cds.log('databricks');
 
-// ─── Cache ──────────────────────────────────────────────────────────────────
-
-/** @type {Map<string, {expires:number, rows:any[]}>} */
 const cache = new Map();
-/** @type {Map<string, Promise<any[]>>} */
 const inFlight = new Map();
 
 function cacheGet(key) {
@@ -42,15 +26,12 @@ function cacheSet(key, rows) {
   cache.set(key, { expires: Date.now() + CACHE.ttlMs, rows });
 }
 
-/** Drop everything, or every key containing `substring`. */
 function invalidate(substring) {
   if (!substring) return cache.clear();
   for (const key of cache.keys()) {
     if (key.includes(substring)) cache.delete(key);
   }
 }
-
-// ─── Query ──────────────────────────────────────────────────────────────────
 
 function requireConfig() {
   const host  = process.env.DATABRICKS_SERVER_HOSTNAME;
@@ -87,18 +68,11 @@ async function runStatement(sqlText, maxRows) {
     LOG.info(`query ok  ${rows.length} rows  ${Date.now() - started}ms`);
     return rows;
   } finally {
-    if (session) { try { await session.close(); } catch { /* ignore */ } }
-    try { await client.close(); } catch { /* ignore */ }
+    if (session) { try { await session.close(); } catch {  } }
+    try { await client.close(); } catch {  }
   }
 }
 
-/**
- * Execute SQL against the warehouse, with caching and in-flight de-duplication.
- *
- * @param {string} sqlText
- * @param {{maxRows?:number, noCache?:boolean}} [options]
- * @returns {Promise<any[]>} array of plain objects
- */
 async function query(sqlText, options = {}) {
   const key = sqlText;
 
@@ -123,7 +97,74 @@ async function query(sqlText, options = {}) {
   return promise;
 }
 
-// ─── Value helpers ──────────────────────────────────────────────────────────
+const col = (name) => '`' + String(name).replace(/`/g, '``') + '`';
+
+const normaliseColumn = (name) => String(name ?? '')
+  .normalize('NFKC')
+  .replace(/[\u200B-\u200D\uFEFF]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+
+const describeColumn = (name) => String(name ?? '').replace(
+  /[^\x20-\x7E]/g,
+  (ch) => `<U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}>`
+);
+
+async function columnsOf(fqTable) {
+  const rows = await query(`DESCRIBE TABLE ${fqTable}`);
+  const names = [];
+  for (const row of rows) {
+    const raw = row.col_name ?? row.COL_NAME ?? Object.values(row)[0];
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('#')) break;
+    names.push(raw);
+  }
+  return names;
+}
+
+async function resolveColumns(fqTable, wanted) {
+  const actual = await columnsOf(fqTable);
+  const byNormalised = new Map();
+  for (const name of actual) {
+    const key = normaliseColumn(name);
+    if (!byNormalised.has(key)) byNormalised.set(key, name);
+  }
+
+  const resolved = {};
+  const missing = [];
+  for (const [key, configured] of Object.entries(wanted)) {
+    if (configured === null || configured === undefined) {
+      resolved[key] = null;
+      continue;
+    }
+    const hit = byNormalised.get(normaliseColumn(configured));
+    if (hit === undefined) {
+      resolved[key] = null;
+      missing.push(configured);
+    } else {
+      resolved[key] = hit;
+      if (hit !== configured) {
+        LOG.info(
+          `column "${configured}" resolved to "${describeColumn(hit)}" in ${fqTable}`
+        );
+      }
+    }
+  }
+  return { resolved, missing, actual };
+}
+
+function pick(row, name) {
+  if (row == null || name == null) return undefined;
+  if (Object.prototype.hasOwnProperty.call(row, name)) return row[name];
+  const target = normaliseColumn(name);
+  for (const key of Object.keys(row)) {
+    if (normaliseColumn(key) === target) return row[key];
+  }
+  return undefined;
+}
 
 const clean = (v) => (typeof v === 'string' ? v.trim() : v);
 
@@ -133,7 +174,6 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** Round a numeric to `dp` decimal places, preserving null. */
 const round = (v, dp = 2) => {
   const n = num(v);
   if (n === null) return null;
@@ -148,15 +188,6 @@ const slug = (v) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-/**
- * Suppliers.ID is the Databricks business key, SourceSystemVendorNumber, used
- * verbatim. It is unique per row in fiori_mv_supplier_list, and the spend and
- * compliance views carry the same column — so child rows join on it directly,
- * with no name matching and no synthetic composite.
- *
- * Only whitespace is trimmed; the value is otherwise untouched so it stays
- * traceable back to the source system.
- */
 const supplierIdFrom = (vendorNumber) => {
   const v = clean(vendorNumber);
   return v === null || v === undefined || v === '' ? null : String(v);
@@ -165,13 +196,6 @@ const supplierIdFrom = (vendorNumber) => {
 const makeSupplierId = (row, columns) =>
   supplierIdFrom(row[columns?.vendorNumber || 'SourceSystemVendorNumber']);
 
-/**
- * Make IDs unique in place, appending -1, -2 … to duplicates.
- *
- * With SourceSystemVendorNumber as the key this should be a no-op for
- * Suppliers; `onDuplicate` fires if it isn't, because silently renaming a
- * vendor key would hide a data-quality problem in the source view.
- */
 function dedupeIds(rows, onDuplicate) {
   const seen = Object.create(null);
   for (const r of rows) {
@@ -186,13 +210,8 @@ function dedupeIds(rows, onDuplicate) {
   return rows;
 }
 
-/**
- * SQL-quote a string literal for safe inline interpolation.
- * Only used for values we build ourselves (never raw user input paths).
- */
 const lit = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
-/** `YYYY-MM` from year + month. */
 const yearMonth = (year, month) =>
   year == null || month == null ? null : `${year}-${String(month).padStart(2, '0')}`;
 
@@ -205,6 +224,12 @@ const monthShort = (month) => (monthName(month) || '').slice(0, 3) || null;
 module.exports = {
   query,
   invalidate,
+  col,
+  normaliseColumn,
+  describeColumn,
+  columnsOf,
+  resolveColumns,
+  pick,
   clean,
   num,
   round,

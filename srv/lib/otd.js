@@ -1,25 +1,3 @@
-/**
- * On-Time Delivery — derived from the raw purchase-order line-item view.
- *
- * DEFINITION (matches the dashboard subtitle):
- *   "The number of purchase order line items delivered on time to the required
- *    date and quantity divided by the number of total purchase order line
- *    items required."
- *
- * So OTD% = on_time_lines / total_lines * 100, where a line is on time when
- *   (a) actual_delivery_date − required_date  ∈  [earlyDays, lateDays]  and
- *   (b) delivered_quantity satisfies OTD.quantityRule.
- *
- * Two tolerance windows are computed in a single pass so the trend chart can
- * show both series without a second warehouse round-trip:
- *   strict   [-3, 0]  → "OTD% (-3 -0)"
- *   tolerant [-5, +1] → "OTD% (-5 +1)"
- *
- * Three result sets are produced from the same base CTE:
- *   1. monthlyOtdSql()  → supplier × year-month           (trend chart)
- *   2. siteOtdSql()     → supplier × plant                (Danfoss sites bar)
- *   3. forecastSql()    → pre-computed forecast rows       (dotted line)
- */
 
 'use strict';
 
@@ -31,18 +9,11 @@ const {
   clean, num, round, supplierIdFrom, slug, yearMonth, monthShort,
 } = require('./dbx');
 
-// ─── SQL fragment builders ──────────────────────────────────────────────────
-
-/**
- * Signed delivery delta in days: negative = early, positive = late.
- * Uses the pre-computed column when dbx-config declares one.
- */
 function deltaExpr() {
   if (C.deliveryDeltaDays) return `l.\`${C.deliveryDeltaDays}\``;
   return `DATEDIFF(l.\`${C.actualDate}\`, l.\`${C.requiredDate}\`)`;
 }
 
-/** Quantity-completeness predicate per OTD.quantityRule. */
 function qtyPredicate() {
   const delivered = `COALESCE(l.\`${C.deliveredQty}\`, 0)`;
   const required  = `COALESCE(l.\`${C.requiredQty}\`, 0)`;
@@ -58,7 +29,6 @@ function qtyPredicate() {
   }
 }
 
-/** `CASE WHEN <in window> AND <qty ok> THEN 1 ELSE 0 END AS alias` */
 function onTimeFlag(windowKey, alias) {
   const w = OTD.windows[windowKey];
   return `CASE
@@ -69,13 +39,8 @@ function onTimeFlag(windowKey, alias) {
           END AS ${alias}`;
 }
 
-/** Optional column — emitted as NULL when not mapped, so SELECT stays valid. */
 const optional = (col, alias) => (col ? `l.\`${col}\` AS ${alias}` : `CAST(NULL AS STRING) AS ${alias}`);
 
-/**
- * Base CTE: one row per PO line, decorated with period, site and both on-time
- * flags. Everything else aggregates over this.
- */
 function baseCte() {
   return `
     WITH lines AS (
@@ -99,11 +64,8 @@ function baseCte() {
 
 const PCT = (flag) => `ROUND(100.0 * SUM(${flag}) / NULLIF(COUNT(*), 0), 2)`;
 
-// Identity columns carried through every aggregation. vendor_number leads so
-// the result joins straight onto Suppliers.ID with no name matching.
 const GROUP_KEYS = 'vendor_number, supplier_name, segment';
 
-/** Vendor × year-month aggregation for the trend chart. */
 function monthlyOtdSql() {
   return `${baseCte()}
     SELECT
@@ -122,7 +84,6 @@ function monthlyOtdSql() {
     ORDER BY vendor_number, year, month`;
 }
 
-/** Vendor × plant aggregation for the "OTD at Danfoss Sites" bar chart. */
 function siteOtdSql() {
   return `${baseCte()}
     SELECT
@@ -143,7 +104,6 @@ function siteOtdSql() {
     ORDER BY vendor_number, otd_strict_pct DESC`;
 }
 
-/** Pre-computed forecast rows (OTD.forecast.source === 'view'). */
 function forecastSql() {
   const F = OTD.forecast.columns;
   return `
@@ -163,15 +123,6 @@ function forecastSql() {
     ORDER BY vendor_number, year, month`;
 }
 
-// ─── Row mappers (Databricks row → CDS DeliveryData / DeliveryBySite) ───────
-
-/**
- * @param {any} row  raw aggregated Databricks row
- * @param {{isForecast?:boolean, supplierId?:string}} [opts]
- *        supplierId — resolved Suppliers.ID. Passed in rather than derived
- *        here, because one Databricks supplier NAME can correspond to several
- *        Suppliers records (the CDS key is name + segment + plant).
- */
 function mapMonthlyRow(row, { isForecast = false, supplierId } = {}) {
   const supplierName = clean(row.supplier_name);
   const plant        = clean(row.plant_name);
@@ -180,7 +131,6 @@ function mapMonthlyRow(row, { isForecast = false, supplierId } = {}) {
 
   const strict   = round(row.otd_strict_pct, 2);
   const tolerant = round(row.otd_tolerant_pct, 2);
-  // supplierId is resolved by the caller (vendor number, or name fallback).
   const sid      = supplierId || supplierIdFrom(row.vendor_number) || slug(supplierName);
 
   return {
@@ -202,7 +152,6 @@ function mapMonthlyRow(row, { isForecast = false, supplierId } = {}) {
     yearMonth:  yearMonth(year, month),
     monthLabel: monthShort(month),
 
-    // Primary series — the one the KPI and traffic light use.
     onTimePercent:         strict,
     onTimePercentTolerant: tolerant,
 
@@ -244,7 +193,6 @@ function mapSiteRow(row, { supplierId } = {}) {
   };
 }
 
-/** UI.Criticality: 1 = Negative, 2 = Critical, 3 = Positive, 0 = Neutral. */
 function criticalityOf(pct) {
   if (pct === null || pct === undefined) return 0;
   if (pct < OTD.critical) return 1;
@@ -252,11 +200,8 @@ function criticalityOf(pct) {
   return 3;
 }
 
-// ─── Post-processing: trailing window, forecast, KPI ────────────────────────
-
 const periodKey = (r) => (r.year ?? 0) * 100 + (r.month ?? 0);
 
-/** Rows are grouped per supplier AND per site; plantName === null = all sites. */
 const grainKey = (r) => `${r.supplier_ID}::${r.plantName ?? ''}`;
 
 function groupBy(rows, keyFn) {
@@ -269,16 +214,6 @@ function groupBy(rows, keyFn) {
   return map;
 }
 
-/**
- * Collapse per-site monthly rows into one all-sites row per supplier × month.
- *
- * Percentages are recomputed from the summed line-item counts, NOT averaged —
- * averaging site percentages would over-weight low-volume sites and is the
- * classic way an OTD figure drifts away from the official number.
- *
- * The result (plantName === null) is what the trend chart and the KPI use;
- * the per-site rows remain available for the site filter.
- */
 function rollUpSites(rows) {
   const out = [];
 
@@ -318,10 +253,6 @@ function rollUpSites(rows) {
   return out;
 }
 
-/**
- * Keep only the last `months` actual periods per supplier × site (dashboard
- * subtitle reads "Last 3 Months"). Forecast rows are always kept.
- */
 function trailingWindow(rows, months = OTD.historyMonths) {
   const kept = [];
   for (const list of groupBy(rows, grainKey).values()) {
@@ -332,10 +263,6 @@ function trailingWindow(rows, months = OTD.historyMonths) {
   return kept;
 }
 
-/**
- * Least-squares projection, used only when OTD.forecast.source === 'compute'.
- * Produces `months` synthetic rows continuing the actual series.
- */
 function computeForecast(actuals, months = OTD.forecast.months) {
   const sorted = [...actuals].sort((a, b) => periodKey(a) - periodKey(b));
   if (sorted.length < 2) return [];
@@ -392,10 +319,6 @@ function computeForecast(actuals, months = OTD.forecast.months) {
   return out;
 }
 
-/**
- * KPI card: "82.1% ↓ Trending Down" over the actual window.
- * Average is line-weighted where counts exist, plain mean otherwise.
- */
 function summarise(rows, supplierId) {
   const actuals = rows
     .filter((r) => !r.isForecast && r.onTimePercent !== null)
@@ -446,7 +369,6 @@ function summarise(rows, supplierId) {
     fromPeriod:      actuals[0].yearMonth,
     toPeriod:        latest.yearMonth,
     targetPercent:   OTD.target,
-    // A falling KPI is "Critical" even while still above target.
     criticality: direction < 0 && average < OTD.target ? 2 : criticalityOf(average),
   };
 }

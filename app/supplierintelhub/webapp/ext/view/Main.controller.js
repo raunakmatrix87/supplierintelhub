@@ -10,9 +10,6 @@ sap.ui.define(
 
         return PageController.extend("supplierintelhub.ext.view.Main", {
 
-            /**
-             * Navigate to the Supplier object page when a table row is pressed.
-             */
             onRowPress: function (oEvent) {
                 var oContext = oEvent.getParameter("bindingContext")
                     || (oEvent.getSource() && oEvent.getSource().getBindingContext());
@@ -21,11 +18,6 @@ sap.ui.define(
                 }
             },
 
-            /**
-             * "All Suppliers" / "My Suppliers" segmented toggle.
-             * Applies an application-level filter on the macros table binding so it
-             * coexists with FilterBar conditions and table personalization.
-             */
             onSupplierScopeChange: function (oEvent) {
                 var sKey = oEvent.getParameter("item").getKey();
                 var oBinding = this._getSuppliersBinding();
@@ -38,9 +30,6 @@ sap.ui.define(
                 oBinding.filter(aFilters, FilterType.Application);
             },
 
-            /**
-             * Resolves the OData V4 list binding of the macros:Table building block.
-             */
             _getSuppliersBinding: function () {
                 var oTableAPI = this.byId("suppliersTable");
                 if (!oTableAPI) {

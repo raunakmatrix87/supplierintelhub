@@ -4,11 +4,6 @@ const CATALOG = process.env.DATABRICKS_CATALOG || 'bs_db_dev';
 const SCHEMA = process.env.DATABRICKS_SCHEMA || 'proc_silver';
 const fq = (object) => `${CATALOG}.${SCHEMA}.\`${object}\``;
 
-// PPM lives in the SQL-Server-backed reporting catalog, not proc_silver, so it
-// needs its own catalog/schema pair. These carry defaults for the same reason
-// CATALOG/SCHEMA do — without them fqPpm() silently produced
-// "undefined.undefined.`q_ppm_opm2`" and every PPM read failed with a 502,
-// which the charts render as an empty "No data" plot.
 const PPM_CATALOG = process.env.DATABRICKS_PPM_CATALOG || 'bs_db_sql_bs_reporting';
 const PPM_SCHEMA = process.env.DATABRICKS_PPM_SCHEMA || 'dbo';
 const fqPpm = (object) => `${PPM_CATALOG}.${PPM_SCHEMA}.\`${object}\``;
@@ -16,14 +11,11 @@ const fqPpm = (object) => `${PPM_CATALOG}.${PPM_SCHEMA}.\`${object}\``;
 const TABLES = {
   supplierList : 'fiori_mv_supplier_list',
   spendByYear  : 'fiori_mv_spend_by_year',
-  poLines      : 'fiori_mv_po_lines',
-  // Wide table: one row per company, one expiry-date column per standard.
   compliance   : 'compliance',
-  // Vendor master — the only place aribaid and the SAP vendor number meet.
   vendorMaster : 'd_vendormaster',
   otdForecast  : 'fiori_mv_otd_forecast',
   ppmData      : 'q_ppm_opm2',
-};
+  otdData      : 'q_otd',};
 
 const SUPPLIER_COLUMNS = {
   vendorNumber        : 'SourceSystemVendorNumber',
@@ -70,6 +62,24 @@ const PPM_COLUMNS = {
   ppm          : 'Total PPM Qty',
 };
 
+const OPM_COLUMNS = {
+  vendorNumber    : 'Vendor',
+  yearMonth       : 'Cal. year / month',
+  notifications   : 'Total no. of Notifications',
+  goodsReceiptQty : 'Actual Goods Receipt QTY',
+};
+const OTD_COLUMNS = {
+  sourceSystemId : 'Source system ID',
+  vendor         : 'Vendor',
+  yearMonth      : 'Requested Year/Month',
+  early3         : '3 days early (no of lines)',
+  early2         : '2 days early (no of lines)',
+  early1         : '1 day early (no of lines)',
+  onTime         : 'On time (no of lines)',
+  delay1         : '1 day delay (no of lines)',
+  totalLines     : 'Total Lines',
+};
+
 const PO_LINE_COLUMNS = {
   vendorNumber      : 'SourceSystemVendorNumber',
   supplierName      : 'supplier_name',
@@ -84,37 +94,17 @@ const PO_LINE_COLUMNS = {
   deliveredQty      : 'delivered_quantity',
   deliveryDeltaDays : null,
 };
-
-// bs_db_dev.proc_silver.compliance is a WIDE table: one row per company, with
-// a separate expiry-date column per certification. There is no status column —
-// the state is derived from the date (see COMPLIANCE_STANDARDS below).
-//
-// It carries `aribaid`, NOT the SAP vendor number that Suppliers.ID is built
-// from, so it is joined to the vendor master to get there (see below).
 const COMPLIANCE_COLUMNS = {
   aribaId           : 'aribaid',
   supplierName      : 'onecompanyname',
-  // Escape hatches for the combined ISO 9001 / IATF row. `waver` is spelt that
-  // way in the source table — not a typo here.
   waiver            : 'waver',
   activityPerformed : 'activityperformedatthislocation',
 };
 
-/** Values of `waver` that count as a granted waiver. Compared case-insensitively. */
 const COMPLIANCE_WAIVER_VALUES = ['yes', 'y', 'true'];
 
-/**
- * Values of `activityperformedatthislocation` that make a certificate moot.
- * Punctuation and spacing are stripped before comparing, and both the correct
- * and the transposed spelling are accepted because the source data uses
- * 'Not Revelant'.
- */
 const COMPLIANCE_NOT_RELEVANT_VALUES = ['not relevant', 'not revelant'];
 
-// d_vendormaster is the bridge: aribaid (9004722) ↔ vendornumber (1102524)
-// ↔ sourcesystem_vendornumber ('01/1102524'). Suppliers.ID is the
-// SourceSystemVendorNumber of fiori_mv_supplier_list, so the join carries both
-// candidate keys and the resolver picks whichever one the supplier list knows.
 const VENDOR_MASTER_COLUMNS = {
   aribaId            : 'aribaid',
   vendorNumber       : 'vendornumber',
@@ -122,22 +112,6 @@ const VENDOR_MASTER_COLUMNS = {
   vendorName         : 'vendorname',
 };
 
-/**
- * The two rows of the Overall Compliance card, in display order.
- *
- *   dateColumns      expiry columns to consider. ANY one of them still valid
- *                    (>= today) makes the row Compliant.
- *   allowWaiver      `waver` = YES also makes it Compliant.
- *   allowNotRelevant `activityperformedatthislocation` = 'Not relevant' also
- *                    makes it Compliant.
- *
- * With none of the above satisfied the row is Noncompliant — which is also what
- * a missing (null) date yields, since a certificate that was never captured is
- * not evidence of anything.
- *
- * Row 1 is deliberately date-only: an ISO 14001 certificate is either live or
- * it is not, and no waiver overrides that. Row 2 is the combined business rule.
- */
 const COMPLIANCE_STANDARDS = [
   {
     key              : 'iso14001',
@@ -156,7 +130,6 @@ const COMPLIANCE_STANDARDS = [
     allowNotRelevant : true,
   },
 ];
-
 
 const OTD = {
   windows: {
@@ -208,6 +181,8 @@ module.exports = {
   SPEND_COLUMNS,
   SPEND,
   PPM_COLUMNS,
+  OPM_COLUMNS,
+  OTD_COLUMNS,
   PO_LINE_COLUMNS,
   COMPLIANCE_COLUMNS,
   COMPLIANCE_STANDARDS,

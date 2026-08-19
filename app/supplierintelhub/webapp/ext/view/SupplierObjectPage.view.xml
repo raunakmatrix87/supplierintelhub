@@ -76,7 +76,6 @@
                                     </items>
                                 </SegmentedButton>
                             </OverflowToolbar>
-                            <!-- Hidden filter source that drives the chart via the period buttons -->
                             <macros:FilterBar
                                 id="spendFilterBar"
                                 metaPath="spendData/@com.sap.vocabularies.UI.v1.SelectionFields"
@@ -94,8 +93,6 @@
             <uxap:ObjectPageSection id="_IDGenObjectPageSection2" title="Parts Per Million" titleUppercase="false">
                 <uxap:subSections>
                     <uxap:ObjectPageSubSection id="_IDGenObjectPageSubSection1">
-                        <!-- Both charts read ppmData; they differ only in the
-                             grouping dimension (month vs. year). -->
                         <FlexBox id="_IDGenFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true">
                             <VBox id="_IDGenVBox6" class="sapUiSmallMarginEnd" width="48%" minWidth="22rem">
                                 <macros:Chart
@@ -113,10 +110,62 @@
                     </uxap:ObjectPageSubSection>
                 </uxap:subSections>
             </uxap:ObjectPageSection>
+            <uxap:ObjectPageSection id="otdSection" title="On Time Delivery" titleUppercase="false">
+                <uxap:subSections>
+                    <uxap:ObjectPageSubSection id="otdSubSection">
+                        <VBox id="otdSectionBox" fitContainer="true">
+                            <FlexBox id="otdTopRow" wrap="Wrap" alignItems="Stretch" fitContainer="true">
+                                <VBox id="otdTrendBox" class="sapUiSmallMarginEnd" width="62%" minWidth="26rem">
+                                    <macros:Chart
+                                        id="otdTrendChart"
+                                        metaPath="otdData/@com.sap.vocabularies.UI.v1.Chart#OtdTrend"
+                                        selectionMode="None"/>
+                                </VBox>
+                                <VBox id="otdKpiBox" width="34%" minWidth="18rem">
+                                    <Panel id="otdKpiPanel" backgroundDesign="Solid" class="sapUiSmallMarginTop">
+                                        <VBox id="otdKpiContent" class="sapUiSmallMargin">
+                                            <Title id="otdKpiTitle" text="On Time Delivery - Average Results" level="H3"/>
+                                            <Text id="otdKpiPeriod"
+                                                text="{otdKpi>/periodLabel}"
+                                                class="sapUiTinyMarginBottom sapUiContentLabelColor"/>
+                                            <HBox id="otdKpiNumberRow" alignItems="Center" visible="{otdKpi>/hasData}">
+                                                <NumericContent
+                                                    id="otdKpiValue"
+                                                    value="{otdKpi>/averageText}"
+                                                    scale="%"
+                                                    indicator="{otdKpi>/indicator}"
+                                                    valueColor="{otdKpi>/valueColor}"
+                                                    icon="sap-icon://line-chart"
+                                                    withMargin="false"
+                                                    nullifyValue="false"/>
+                                                <VBox id="otdKpiTrendBox" class="sapUiSmallMarginBegin">
+                                                    <Text id="otdKpiTrendText" text="{otdKpi>/trendText}"/>
+                                                    <Text id="otdKpiDeltaText"
+                                                        text="{otdKpi>/deltaText}"
+                                                        class="sapUiContentLabelColor"/>
+                                                </VBox>
+                                            </HBox>
+                                            <Text
+                                                id="otdKpiNoData"
+                                                visible="{= !${otdKpi>/hasData} }"
+                                                text="No on-time delivery data reported for this supplier."
+                                                class="sapUiSmallMarginTop sapUiContentLabelColor"/>
+                                            <macros:Chart
+                                                id="otdAverageChart"
+                                                metaPath="otdData/@com.sap.vocabularies.UI.v1.Chart#OtdAverage"
+                                                selectionMode="None"/>
+                                        </VBox>
+                                    </Panel>
+                                </VBox>
+                            </FlexBox>
+                        </VBox>
+                    </uxap:ObjectPageSubSection>
+                </uxap:subSections>
+            </uxap:ObjectPageSection>
             <uxap:ObjectPageSection id="complianceSection" title="Overall Compliance" titleUppercase="false">
                 <uxap:subSections>
                     <uxap:ObjectPageSubSection id="complianceSubSection">
-                       
+
                         <macros:Table
                             id="complianceTable"
                             metaPath="complianceItems/@com.sap.vocabularies.UI.v1.PresentationVariant#Ordered"

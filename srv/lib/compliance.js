@@ -1,19 +1,3 @@
-/**
- * Overall Compliance card — two rows.
- *
- * Source: bs_db_dev.proc_silver.compliance — a WIDE table with one row per
- * company and one expiry-date column per certification. There is no status
- * column; the state is derived per row from the rules in COMPLIANCE_STANDARDS:
- *
- *   ISO 14001             date-only. iso14001expirydate null or past → Noncompliant.
- *   ISO 9001 / IATF 16949 Compliant if EITHER iso9001expirydate OR
- *                         iatf16949expirydate is still valid, OR waver = YES,
- *                         OR activityperformedatthislocation = 'Not relevant'.
- *                         Otherwise Noncompliant.
- *
- * The mapper always emits both rows, so a supplier with no certificate on file
- * still shows on the card as Noncompliant rather than silently dropping off it.
- */
 
 'use strict';
 
@@ -28,30 +12,12 @@ const { clean, supplierIdFrom } = require('./dbx');
 const optional = (col, alias) =>
   col ? `c.\`${col}\` AS ${alias}` : `CAST(NULL AS STRING) AS ${alias}`;
 
-/**
- * Normalise a join key. aribaid is numeric in one table and text in the other,
- * and a column typed DOUBLE stringifies as '9004722.0' — which matches nothing.
- * Trailing '.0' is therefore stripped; everything else is left alone so
- * alphanumeric keys survive untouched.
- */
 const key = (expr) => `regexp_replace(TRIM(CAST(${expr} AS STRING)), '\\\\.0+$', '')`;
 
-/** Every distinct expiry column any configured row needs, deduplicated. */
 const dateColumnsInUse = () => [
   ...new Set(COMPLIANCE_STANDARDS.flatMap((std) => std.dateColumns || [])),
 ];
 
-/**
- * One row per company × vendor number, carrying every expiry column in use
- * (aliased `exp_<column>`) plus the waiver and activity columns, so the mapper
- * never has to know the physical column names.
- *
- * The compliance table only knows aribaid, so d_vendormaster is joined in to
- * reach the SAP vendor number. The join is deliberately NOT deduplicated: one
- * Ariba supplier can map to several vendor numbers, and the certificate applies
- * to all of them. mapComplianceRows() groups by Suppliers.ID afterwards, so the
- * fan-out costs nothing in the result.
- */
 function complianceSql() {
   const dates = dateColumnsInUse()
     .map((col) => `      ${optional(col, `exp_${col}`)}`)
@@ -74,15 +40,7 @@ ${dates}
      AND ${key(`c.\`${C.aribaId}\``)} <> ''`;
 }
 
-// ─── Date handling ──────────────────────────────────────────────────────────
 
-/**
- * Databricks hands DATE columns back as a JS Date, as 'YYYY-MM-DD', or — when
- * the column is typed as a string in the source — as 'M/D/YYYY'. All three are
- * accepted; anything else is treated as "no date", i.e. Noncompliant.
- *
- * @returns {{iso: string, time: number}|null} normalised date, or null
- */
 function parseExpiry(raw) {
   const v = clean(raw);
   if (v === null || v === undefined || v === '') return null;
@@ -95,11 +53,9 @@ function parseExpiry(raw) {
 
   const s = String(v).trim();
 
-  // 'YYYY-MM-DD' (optionally with a time part, which is discarded)
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
   if (m) return build(+m[1], +m[2], +m[3]);
 
-  // 'M/D/YYYY' — the format the Databricks sample-data preview renders
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
   if (m) return build(+m[3], +m[1], +m[2]);
 
@@ -118,28 +74,19 @@ function build(year, month, day) {
   };
 }
 
-/** Midnight UTC today — a certificate expiring today still counts as valid. */
 const startOfToday = () => {
   const now = new Date();
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
 };
 
-/**
- * The date rule, in one place.
- * @returns {{status:'Compliant'|'Noncompliant', validTo:string|null}}
- */
 function statusFromExpiry(raw, today = startOfToday()) {
   const parsed = parseExpiry(raw);
-  // null / unparseable → never certified → Noncompliant
   if (!parsed) return { status: 'Noncompliant', validTo: null };
-  // lapsed → Noncompliant
   if (parsed.time < today) return { status: 'Noncompliant', validTo: parsed.iso };
   return { status: 'Compliant', validTo: parsed.iso };
 }
 
-// ─── The waiver / not-relevant escape hatches ───────────────────────────────
 
-/** Lowercase and strip everything that isn't a letter or digit. */
 const norm = (v) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 const WAIVER = new Set(COMPLIANCE_WAIVER_VALUES.map(norm));
@@ -148,20 +95,9 @@ const NOT_RELEVANT = new Set(COMPLIANCE_NOT_RELEVANT_VALUES.map(norm));
 const isWaived = (raw) => WAIVER.has(norm(raw));
 const isNotRelevant = (raw) => NOT_RELEVANT.has(norm(raw));
 
-/**
- * Evaluate one configured row against one source record.
- *
- * A live certificate always wins, and when a row watches several dates the
- * furthest-out valid one is reported — that is the date the supplier is
- * actually covered until. Only when no date qualifies do the waiver and
- * not-relevant escapes apply, and those report no date, because "Compliant
- * until 2024" next to an expired certificate reads as a bug.
- *
- * @returns {{status:string, validTo:string|null, basis:string}}
- */
 function evaluateStandard(std, row, today = startOfToday()) {
-  let best = null;    // furthest-out still-valid date
-  let lapsed = null;  // furthest-out expired date, for context on failures
+  let best = null;
+  let lapsed = null;
 
   for (const col of std.dateColumns || []) {
     const result = statusFromExpiry(row[`exp_${col}`], today);
@@ -189,21 +125,10 @@ function evaluateStandard(std, row, today = startOfToday()) {
 
 const CRITICALITY = { Compliant: 3, Noncompliant: 1, Unknown: 0 };
 
-// ─── Key resolution ─────────────────────────────────────────────────────────
 
-/** Accept both the old `nameToIds` Map and the full supplierIndex() object. */
 const asIndex = (arg) =>
   (arg instanceof Map ? { nameToIds: arg, knownIds: null } : (arg || {}));
 
-/**
- * Resolve a joined compliance row to Suppliers.ID(s).
- *
- * d_vendormaster gives two spellings of the same vendor — '01/1102524' and
- * '1102524' — and which one Suppliers.ID uses depends on how
- * fiori_mv_supplier_list populates SourceSystemVendorNumber. Rather than
- * hard-coding a guess, both are offered and the one the supplier list actually
- * knows wins. Only if neither is known does it fall back to the company name.
- */
 function supplierIdsFor(row, index) {
   const { nameToIds, knownIds } = asIndex(index);
 
@@ -221,24 +146,13 @@ function supplierIdsFor(row, index) {
   const byName = nameToIds?.get(clean(row.supplier_name));
   if (byName && byName.length) return byName;
 
-  // No match anywhere — keep the first candidate so the gap stays visible in
-  // the data rather than disappearing silently.
   return candidates.slice(0, 1);
 }
 
-// ─── Mapping ────────────────────────────────────────────────────────────────
 
-/**
- * @param {any[]} rows raw Databricks rows from complianceSql()
- * @param {{nameToIds?:Map<string,string[]>, knownIds?:Set<string>}|Map} [index]
- *        supplierIndex() output. A bare Map is accepted as `nameToIds` for
- *        backwards compatibility.
- * @returns {any[]} CDS ComplianceItems rows, one per supplier × standard
- */
 function mapComplianceRows(rows, index) {
   const today = startOfToday();
 
-  /** @type {Map<string, Map<string, any>>} supplier_ID → standardKey → detail */
   const bySupplier = new Map();
 
   for (const row of rows) {
@@ -254,8 +168,6 @@ function mapComplianceRows(rows, index) {
         const detail = evaluateStandard(std, row, today);
         detail.aribaId = clean(row.ariba_id) || null;
 
-        // Keep the worst status when a supplier has several rows (e.g. one per
-        // legal entity) — a single lapsed certificate fails the card.
         const existing = seen.get(std.key);
         if (existing && CRITICALITY[existing.status] <= CRITICALITY[detail.status]) continue;
         seen.set(std.key, detail);
@@ -271,16 +183,11 @@ function mapComplianceRows(rows, index) {
       out.push({
         ID: `CMP-${supplierId}-${std.key}`,
         supplier_ID: supplierId,
-        // supplier_ID *is* the vendor number; surfaced explicitly so the join
-        // result is readable straight off the OData payload.
         vendorNumber: supplierId,
         aribaId: hit.aribaId ?? null,
         standardKey: std.key,
         standard: std.label,
         status: hit.status,
-        // Why the row reads the way it does: Certificate | Waiver |
-        // Not relevant | Expired | None. Not rendered on the card, but it makes
-        // a surprising status explainable without re-querying Databricks.
         basis: hit.basis ?? null,
         validFrom: null,
         validTo: hit.validTo ?? null,
@@ -294,11 +201,6 @@ function mapComplianceRows(rows, index) {
   return out;
 }
 
-/**
- * Roll the per-standard rows up to the Suppliers.complianceStatus enum
- * ('OK' | 'UpcomingRenew' | 'Expired'), so the existing header ObjectStatus
- * stays consistent with the card.
- */
 function rollUp(items, { renewWindowDays = 90 } = {}) {
   if (!items.length) return 'OK';
   if (items.some((i) => i.status === 'Noncompliant')) return 'Expired';

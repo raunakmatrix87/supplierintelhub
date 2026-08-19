@@ -1,16 +1,3 @@
-/**
- * SupplierService implementation.
- *
- * Every entity here is a *virtual* projection over Databricks: nothing is
- * persisted locally. Each READ handler follows the same shape —
- *
- *     query Databricks → map rows to CDS shape → filter → sort → page
- *
- * — which `serveFromDatabricks()` factors out, so adding a new dashboard
- * dataset is a ~10-line handler.
- *
- * Databricks object and column names live ONLY in srv/lib/dbx-config.js.
- */
 
 'use strict';
 
@@ -19,6 +6,8 @@ const cds = require('@sap/cds');
 const dbx = require('./lib/dbx');
 const {
   fq, fqPpm, TABLES, SUPPLIER_COLUMNS: SC, SPEND_COLUMNS: SPC, PPM_COLUMNS: PPMC,
+  OPM_COLUMNS: OPMC, OTD_COLUMNS: OTDC,
+
   OTD, COMPLIANCE_STANDARDS,
 } = require('./lib/dbx-config');
 const otd = require('./lib/otd');
@@ -26,18 +15,93 @@ const compliance = require('./lib/compliance');
 
 const LOG = cds.log('supplier-service');
 
-// ─── Base SQL for the confirmed views/tables ──────────────────────────
 const SUPPLIER_SQL = `SELECT * FROM ${fq(TABLES.supplierList)}`;
 const SPEND_SQL    = `SELECT * FROM ${fq(TABLES.spendByYear)}`;
 
-// PPM lives in a separate reporting catalog/schema, hence fqPpm() not fq().
+function lazySql(label, build) {
+  let pending = null;
+  return function sql() {
+    if (!pending) {
+      pending = Promise.resolve()
+        .then(build)
+        .then((text) => {
+          LOG.info(`${label} SQL resolved:${text}`);
+          return text;
+        })
+        .catch((err) => { pending = null; throw err; });
+    }
+    return pending;
+  };
+}
+
+async function resolveOrThrow(label, fqTable, wanted) {
+  const { resolved, missing, actual } = await dbx.resolveColumns(fqTable, wanted);
+  if (missing.length) {
+    LOG.error(
+      `${label}: ${fqTable} has no column matching ${missing.map((m) => `"${m}"`).join(', ')}. ` +
+      `Actual columns: ${actual.map((a) => `"${dbx.describeColumn(a)}"`).join(', ')}`
+    );
+    throw new Error(
+      `${fqTable} has no column matching ${missing.map((m) => `"${m}"`).join(', ')}. ` +
+      `Update ${label}_COLUMNS in srv/lib/dbx-config.js — the table has: ` +
+      actual.map((a) => `"${dbx.describeColumn(a)}"`).join(', ')
+    );
+  }
+  return resolved;
+}
+
+const opmSql = lazySql('OPM', async () => {
+  const table = fqPpm(TABLES.ppmData);
+  const c = await resolveOrThrow('OPM', table, {
+    vendorNumber    : PPMC.vendorNumber,
+    yearMonth       : OPMC.yearMonth,
+    notifications   : OPMC.notifications,
+    goodsReceiptQty : OPMC.goodsReceiptQty,
+  });
+  const { col } = dbx;
+  return `
+  SELECT
+    ${col(c.vendorNumber)} AS vendor_number,
+    ${col(c.yearMonth)}    AS year_month,
+    SUM(${col(c.notifications)})   AS notifications,
+    SUM(${col(c.goodsReceiptQty)}) AS goods_receipt_qty
+  FROM ${table}
+  GROUP BY ${col(c.vendorNumber)}, ${col(c.yearMonth)}`;
+});
+
+const otdSql = lazySql('OTD', async () => {
+  const table = fqPpm(TABLES.otdData);
+  const c = await resolveOrThrow('OTD', table, {
+    sourceSystemId : OTDC.sourceSystemId,
+    vendor         : OTDC.vendor,
+    yearMonth      : OTDC.yearMonth,
+    early3         : OTDC.early3,
+    early2         : OTDC.early2,
+    early1         : OTDC.early1,
+    onTime         : OTDC.onTime,
+    delay1         : OTDC.delay1,
+    totalLines     : OTDC.totalLines,
+  });
+  const { col } = dbx;
+  return `
+  SELECT
+    ${col(c.sourceSystemId)} AS source_system_id,
+    ${col(c.vendor)}         AS vendor,
+    ${col(c.yearMonth)}      AS year_month,
+    SUM(${col(c.early3)})     AS early3,
+    SUM(${col(c.early2)})     AS early2,
+    SUM(${col(c.early1)})     AS early1,
+    SUM(${col(c.onTime)})     AS on_time,
+    SUM(${col(c.delay1)})     AS delay1,
+    SUM(${col(c.totalLines)}) AS total_lines
+  FROM ${table}
+  GROUP BY ${col(c.sourceSystemId)}, ${col(c.vendor)}, ${col(c.yearMonth)}`;
+});
+
 const PPM_SQL      = `SELECT * FROM ${fqPpm(TABLES.ppmData)}`;
 
-// ─── Row mappers ────────────────────────────────────────────
+const { clean, num, round, supplierIdFrom, monthShort, pick } = dbx;
 
-const { clean, num, round, supplierIdFrom, monthShort } = dbx;
-
-/** fiori_mv_supplier_list → SupplierService.Suppliers */
 function mapSupplierRow(row) {
   const segment = clean(row[SC.segment]);
   const plant   = clean(row[SC.plant]);
@@ -55,8 +119,6 @@ function mapSupplierRow(row) {
     nextReview:       clean(row[SC.nextReview]),
     complianceStatus: clean(row[SC.complianceStatus]),
     isTopSupplier:    row[SC.isTopSupplier] ?? false,
-
-    // Flat text plus the projection aliases the UI already binds to.
     segmentText:      segment,
     plantText:        plant,
     segmentName:      segment,
@@ -69,12 +131,6 @@ function mapSupplierRow(row) {
   };
 }
 
-/**
- * fiori_mv_spend_by_year → SupplierService.SpendData
- *
- * One row per vendor per year. supplier_ID is the vendor number, so the chart
- * on the object page filters with a plain key match — no name lookup.
- */
 function mapSpendRow(row) {
   const vendor = supplierIdFrom(row[SPC.vendorNumber]);
   const year   = num(row[SPC.year]);
@@ -90,19 +146,10 @@ function mapSpendRow(row) {
   };
 }
 
-/**
- * bs_db_sql_bs_reporting.dbo.q_ppm_opm2 → SupplierService.PPMData
- *
- * `Cal. year / month` arrives as a single 'mm.yyyy' string (e.g. '04.2026').
- * It is split into numeric month/year plus a short calendar label ('Apr')
- * for chart axes, mirroring DeliveryData's month/monthLabel pair. Target has
- * no source column — the view carries only the actual PPM qty — so it is
- * fixed at the same 500 default the CDS field declares.
- */
 function mapPpmRow(row) {
-  const vendor = supplierIdFrom(row[PPMC.vendorNumber]);
+  const vendor = supplierIdFrom(pick(row, PPMC.vendorNumber));
 
-  const raw = clean(row[PPMC.yearMonth]);
+  const raw = clean(pick(row, PPMC.yearMonth));
   const [monthPart, yearPart] = raw ? String(raw).split('.') : [null, null];
   const month = num(monthPart);
   const year  = num(yearPart);
@@ -113,28 +160,73 @@ function mapPpmRow(row) {
     year,
     month,
     monthLabel: monthShort(month),
-    // 'YYYY-MM' — the monthly chart's dimension. monthLabel alone would merge
-    // e.g. Apr 2024 and Apr 2025 into a single averaged column.
     yearMonth:  (year === null || month === null)
       ? null
       : `${year}-${String(month).padStart(2, '0')}`,
-    ppm:        num(row[PPMC.ppm]),
+    ppm:        num(pick(row, PPMC.ppm)),
     target:     500,
   };
 }
+function mapOpmRow(row) {
+  const vendor = supplierIdFrom(row.vendor_number);
 
-// ─── Supplier index ─────────────────────────────────────────────────────────
-//
-// Suppliers.ID is SourceSystemVendorNumber, unique per row. Child views that
-// carry the same column join on it directly. The index exists only for views
-// that do NOT carry it and must fall back to matching on supplier name.
-//
+  const raw = clean(row.year_month);
+  const [monthPart, yearPart] = raw ? String(raw).split('.') : [null, null];
+  const month = num(monthPart);
+  const year  = num(yearPart);
+
+  const notifications   = num(row.notifications);
+  const goodsReceiptQty = num(row.goods_receipt_qty);
+  const opm = goodsReceiptQty
+    ? Math.round((notifications / goodsReceiptQty) * 1000000)
+    : null;
+
+  return {
+    ID:          [vendor, year, month].filter((v) => v !== null).join('-') || cds.utils.uuid(),
+    supplier_ID: vendor,
+    year,
+    month,
+    monthLabel:  monthShort(month),
+    opm,
+  };
+}
+
+function mapOtdRow(row) {
+  const sourceSystemId = clean(row.source_system_id);
+  const vendorRaw      = clean(row.vendor);
+  const hasBoth =
+    sourceSystemId !== null && sourceSystemId !== undefined && sourceSystemId !== '' &&
+    vendorRaw !== null && vendorRaw !== undefined && vendorRaw !== '';
+  const vendor = supplierIdFrom(hasBoth ? `${sourceSystemId}/${vendorRaw}` : null);
+
+  const raw = clean(row.year_month);
+  const [monthPart, yearPart] = raw ? String(raw).split('.') : [null, null];
+  const month = num(monthPart);
+  const year  = num(yearPart);
+
+  const totalLines  = num(row.total_lines);
+  const onTimeLines = (num(row.early3) || 0)
+    + (num(row.early2) || 0)
+    + (num(row.early1) || 0)
+    + (num(row.on_time) || 0)
+    + (num(row.delay1) || 0);
+  const otd = totalLines ? round(100 * onTimeLines / totalLines, 2) : null;
+
+  return {
+    ID:          [vendor, year, month].filter((v) => v !== null).join('-') || cds.utils.uuid(),
+    supplier_ID: vendor,
+    year,
+    month,
+    monthLabel:  monthShort(month),
+    yearMonth:   dbx.yearMonth(year, month),
+    otd,
+  };
+}
+
 async function supplierIndex() {
   const rows = await dbx.query(SUPPLIER_SQL);
 
-  /** @type {Map<string, string[]>} name → vendor numbers with that name */
   const nameToIds = new Map();
-  /** @type {Set<string>} every known vendor number */
   const knownIds = new Set();
 
   for (const row of rows) {
@@ -151,19 +243,6 @@ async function supplierIndex() {
   return { nameToIds, knownIds };
 }
 
-/**
- * Resolve a child row to Suppliers.ID(s).
- *
- * Prefers the row's own vendor-number column. Only when that column is absent
- * or unpopulated does it fall back to name matching — and a name can match
- * several vendor numbers, so the row is emitted once per match rather than
- * being arbitrarily assigned to one.
- *
- * @param {any[]} rows
- * @param {{nameToIds:Map<string,string[]>}} index
- * @param {(row:any, opts:{supplierId?:string}) => any} mapper
- * @param {string|null} vendorColumn  column on `rows` holding the vendor number
- */
 function resolveSuppliers(rows, index, mapper, vendorColumn = 'vendor_number') {
   const out = [];
   for (const row of rows) {
@@ -172,8 +251,6 @@ function resolveSuppliers(rows, index, mapper, vendorColumn = 'vendor_number') {
 
     const ids = index.nameToIds.get(clean(row.supplier_name));
     if (!ids || !ids.length) {
-      // Unknown to the supplier list — kept so data-quality gaps stay visible
-      // rather than being silently dropped.
       out.push(mapper(row, {}));
       continue;
     }
@@ -182,13 +259,6 @@ function resolveSuppliers(rows, index, mapper, vendorColumn = 'vendor_number') {
   return out;
 }
 
-// ─── Generic in-memory OData handling ───────────────────────────────────────
-//
-// CAP cannot push $filter / $orderby / $top down into these hand-built result
-// sets, so they are applied here over the mapped array.
-//
-
-/** Flatten a CQN where-clause into a list of { ref, op, val } comparisons. */
 function extractComparisons(where) {
   const out = [];
   if (!Array.isArray(where)) return out;
@@ -227,31 +297,12 @@ function applyFilter(rows, where) {
   if (!comparisons.length) return rows;
 
   return rows.filter((row) => comparisons.every(({ ref, op, val }) => {
-    // '<assoc>_ID' in CQN matches the same key shape in the mapped row.
     if (!(ref in row)) return true;
     const cmp = COMPARE[op];
     return cmp ? cmp(row[ref], val) : true;
   }));
 }
 
-/**
- * The parent key of a navigation-path read, e.g. /Suppliers('X')/spendData.
- *
- * That request compiles to CQN as SELECT.from.ref = [ { id, where }, 'spendData' ]
- * — the parent's key predicate lives in the FIRST ref segment's own `where`,
- * completely separate from SELECT.where (which only holds a $filter on the
- * target collection itself, if any). A handler that only reads SELECT.where —
- * as this one used to — never sees that predicate, so every Databricks-derived
- * child collection (SpendData, DeliveryData, …) reads as if unscoped: the same
- * full result for every supplier. Verified directly via cds.ql:
- *   SELECT.from("SupplierService.Suppliers[ID='X'].spendData").SELECT.from
- *   → { ref: [ { id: 'SupplierService.Suppliers',
- *                where: [{ref:['ID']}, '=', {val:'X'}] },
- *              'spendData' ] }
- *
- * @param {any} SELECT  req.query.SELECT
- * @returns {string|null} the parent Suppliers.ID, or null for a non-nav read
- */
 function extractNavigationSupplierId(SELECT) {
   const segments = SELECT?.from?.ref;
   if (!Array.isArray(segments)) return null;
@@ -286,25 +337,6 @@ function applyOrderBy(rows, orderBy) {
   });
 }
 
-// ─── $apply aggregation (groupby + aggregate) ───────────────────────────────
-//
-// Every chart on the dashboard (Spend Development, On Time Delivery, OTD at
-// Danfoss Sites) is bound to an Analytics.AggregatedProperty, which Fiori
-// Elements requests via OData's $apply=groupby((dim),aggregate(measure with
-// fn as alias)). CAP's protocol adapter translates that into CQN — a
-// SELECT.groupBy array plus aggregate function objects mixed into
-// SELECT.columns — and normally the generic DB executor performs the actual
-// grouping in SQL. These entities never reach the DB (custom READ handlers
-// return fully-formed rows directly), so nothing else does that grouping.
-// Without this, the response keeps the raw column name (e.g. `amount`)
-// instead of the requested measure alias (`totalSpend`), the chart can't
-// find the field it asked for, and it renders empty — dimension axis present,
-// no bars.
-//
-// CQN shape verified directly via cds.ql:
-//   columns: [ {ref:['year']}, {func:'sum', args:[{ref:['amount']}], as:'totalSpend'} ]
-//   groupBy: [ {ref:['year']} ]
-
 const AGGREGATE_FN = {
   sum:           (vals) => vals.reduce((s, v) => s + v, 0),
   average:       (vals) => (vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null),
@@ -315,22 +347,11 @@ const AGGREGATE_FN = {
   countdistinct: (vals) => new Set(vals).size,
 };
 
-/**
- * Apply SELECT.groupBy + any aggregate columns over already-filtered rows.
- * Returns null when the query isn't an aggregation request (no groupBy), so
- * the caller falls back to the normal per-row path unchanged.
- *
- * @param {any[]} rows     filtered, mapped CDS rows
- * @param {any} SELECT     req.query.SELECT
- * @returns {any[]|null}
- */
 function applyAggregation(rows, SELECT) {
   const groupBy = SELECT?.groupBy;
   if (!groupBy || !groupBy.length) return null;
 
   const groupKeys = groupBy.map((g) => g.ref.join('_'));
-  // Fall back to the bare group-by fields if the request has no explicit
-  // column list (uncommon, but keeps this from throwing on odd queries).
   const columns = SELECT?.columns?.length ? SELECT.columns : groupBy.map((g) => ({ ref: g.ref }));
 
   const groups = new Map();
@@ -362,19 +383,11 @@ function applyAggregation(rows, SELECT) {
   return out;
 }
 
-/**
- * Build a READ handler for a Databricks-derived entity.
- *
- * @param {string} label   log label
- * @param {(req:any) => Promise<any[]>} load  returns fully mapped CDS rows
- * @param {{onDuplicate?: (id:string, row:any) => void}} [opts]
- */
 function serveFromDatabricks(label, load, opts = {}) {
   return async function handler(req, next) {
     try {
       const all = dbx.dedupeIds(await load(req), opts.onDuplicate);
 
-      // Single-key read (…/Entity('ID'))
       const keyRef = req.data && req.data.ID;
       if (keyRef) {
         const one = all.find((r) => r.ID === keyRef);
@@ -383,10 +396,6 @@ function serveFromDatabricks(label, load, opts = {}) {
 
       const { SELECT } = req.query;
 
-      // Scope to the parent supplier for navigation-path reads
-      // (/Suppliers('X')/spendData) before anything else — this is what the
-      // Spend Development chart, and any other supplier-scoped chart, is
-      // actually reading through.
       const navSupplierId = extractNavigationSupplierId(SELECT);
       let rows = navSupplierId ? all.filter((r) => r.supplier_ID === navSupplierId) : all;
       rows = applyFilter(rows, SELECT?.where);
@@ -413,16 +422,6 @@ function serveFromDatabricks(label, load, opts = {}) {
   };
 }
 
-// ─── OTD loading ────────────────────────────────────────────────────────────
-
-/**
- * Monthly OTD, at two grains:
- *   plantName === null → all-sites roll-up (trend chart + KPI)
- *   plantName === 'X'  → that Danfoss site only (site filter)
- *
- * Actuals are trimmed to the trailing window, then the forecast tail is added
- * from the Databricks forecast view (or projected locally as a fallback).
- */
 async function loadMonthlyOtd() {
   const [rows, index] = await Promise.all([
     dbx.query(otd.monthlyOtdSql()),
@@ -439,7 +438,6 @@ async function loadMonthlyOtd() {
         (r, o) => otd.mapMonthlyRow(r, { ...o, isForecast: true }));
       mapped = mapped.concat(otd.rollUpSites(fcPerSite), fcPerSite);
     } catch (err) {
-      // A missing or renamed forecast view must not break the whole dashboard.
       LOG.warn(
         `OTD forecast view ${TABLES.otdForecast} unavailable (${err.message}); ` +
         'falling back to a locally computed projection.'
@@ -453,7 +451,6 @@ async function loadMonthlyOtd() {
   return otd.trailingWindow(mapped);
 }
 
-/** Project each supplier × site series forward independently. */
 function forecastPerGrain(actuals) {
   const out = [];
   const groups = otd.groupBy(actuals.filter((r) => !r.isForecast), otd.grainKey);
@@ -469,23 +466,12 @@ async function loadSiteOtd() {
   return resolveSuppliers(rows, index, (r, o) => otd.mapSiteRow(r, o));
 }
 
-/**
- * One KPI roll-up row per supplier. Built from the all-sites rows only —
- * feeding per-site rows in would count every month once per site.
- */
 async function loadOtdSummary() {
   const monthly = (await loadMonthlyOtd()).filter((r) => !r.plantName);
   const groups = otd.groupBy(monthly, (r) => r.supplier_ID);
   return [...groups.entries()].map(([id, rows]) => otd.summarise(rows, id));
 }
 
-/**
- * The compliance table is keyed by aribaid, so complianceSql() joins it through
- * d_vendormaster to reach the SAP vendor number. The full supplier index (not
- * just the name map) is handed to the mapper because it decides between the
- * '01/1102524' and '1102524' spellings by checking which one the supplier list
- * actually carries.
- */
 async function loadCompliance() {
   const [rows, index] = await Promise.all([
     dbx.query(compliance.complianceSql()),
@@ -511,13 +497,7 @@ async function loadCompliance() {
   return items;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Service
-// ═══════════════════════════════════════════════════════════════════════════
-
 module.exports = cds.service.impl(async function () {
-
-  // ─── Suppliers ────────────────────────────────────────────────────────────
 
   this.on('READ', 'Suppliers', serveFromDatabricks('Suppliers', async () => {
     const rows = await dbx.query(SUPPLIER_SQL);
@@ -530,24 +510,17 @@ module.exports = cds.service.impl(async function () {
     }
     return mapped;
   }, {
-    // The vendor number is expected to be unique. If it isn't, say so loudly
-    // rather than quietly renaming keys and breaking every child join.
     onDuplicate: (id) => LOG.warn(
       `Duplicate ${SC.vendorNumber} "${id}" in ${TABLES.supplierList}. ` +
       'Suppliers.ID assumes it is unique — spend and OTD may attach to the wrong record.'
     ),
   }));
 
-  // ─── Spend (yearly) ───────────────────────────────────────────────────────
-
   this.on('READ', 'SpendData', serveFromDatabricks('SpendData', async () => {
     const rows = await dbx.query(SPEND_SQL);
-    // Ascending year so the column chart reads left-to-right without relying
-    // on the client to sort.
     return rows.map(mapSpendRow).sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
   }));
 
-  // ─── PPM (monthly) ───────────────────────────────────────────
   this.on('READ', 'PPMData', serveFromDatabricks('PPMData', async () => {
     const rows = await dbx.query(PPM_SQL);
     LOG.info(`PPMData: fetched ${rows.length} raw row(s) from Databricks (${TABLES.ppmData})`);
@@ -557,19 +530,34 @@ module.exports = cds.service.impl(async function () {
     LOG.info(`PPMData: mapped ${mapped.length} row(s) to CDS schema`);
     if (mapped.length) LOG.info('PPMData: sample mapped row(s)', mapped.slice(0, 3));
 
-    // Ascending year/month so the trend chart reads left-to-right without
-    // relying on the client to sort.
     return mapped.sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || (a.month ?? 0) - (b.month ?? 0));
   }));
+  this.on('READ', 'OPMData', serveFromDatabricks('OPMData', async () => {
+    const rows = await dbx.query(await opmSql());
+    return rows.map(mapOpmRow)
+      .sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || (a.month ?? 0) - (b.month ?? 0));
+  }));
 
-  // ─── Dashboard datasets ───────────────────────────────────────────────────
+  this.on('READ', 'OTDData', serveFromDatabricks('OTDData', async () => {
+    const rows = await dbx.query(await otdSql());
+    LOG.info(`OTDData: fetched ${rows.length} raw row(s) from Databricks (${TABLES.otdData})`);
+    if (rows.length) LOG.info('OTDData: sample raw row(s)', rows.slice(0, 3));
+
+    const mapped = rows.map(mapOtdRow)
+      .sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || (a.month ?? 0) - (b.month ?? 0));
+
+    const unkeyed = mapped.filter((r) => !r.supplier_ID).length;
+    if (unkeyed) {
+      LOG.warn(`OTDData: ${unkeyed} row(s) have no supplier key ` +
+        '(missing "Source system ID" or "Vendor"); they will not attach to a supplier.');
+    }
+    return mapped;
+  }));
 
   this.on('READ', 'DeliveryData',    serveFromDatabricks('DeliveryData', loadMonthlyOtd));
   this.on('READ', 'DeliveryBySite',  serveFromDatabricks('DeliveryBySite', loadSiteOtd));
   this.on('READ', 'OTDSummary',      serveFromDatabricks('OTDSummary', loadOtdSummary));
   this.on('READ', 'ComplianceItems', serveFromDatabricks('ComplianceItems', loadCompliance));
-
-  // ─── Aggregate dashboard payload (one request, one render) ────────────────
 
   this.on('getDashboard', async (req) => {
     const supplierID = req.data?.supplierID || null;
@@ -591,8 +579,6 @@ module.exports = cds.service.impl(async function () {
       const myCompliance = forSupplier(complianceItems)
         .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
 
-      // The KPI must come from the all-sites grain, otherwise each month would
-      // be counted once per Danfoss site.
       const allSitesMonthly = myMonthly.filter((r) => !r.plantName);
       const supplier = suppliers.find((s) => s.ID === supplierID);
 
@@ -601,12 +587,9 @@ module.exports = cds.service.impl(async function () {
         supplierName: supplier?.name ?? null,
         generatedAt: new Date().toISOString(),
         summary: otd.summarise(allSitesMonthly, supplierID),
-        // Both grains: rows with plantName === null are the all-sites series
-        // the charts default to; the rest back the site filter.
         monthly: myMonthly,
         sites: mySites,
         compliance: myCompliance,
-        // Roll-up kept consistent with the per-standard card.
         complianceStatus: compliance.rollUp(myCompliance),
         thresholds: {
           target: OTD.target,
@@ -625,16 +608,12 @@ module.exports = cds.service.impl(async function () {
     }
   });
 
-  // ─── Cache control ────────────────────────────────────────────────────────
-
   this.on('refreshCache', async (req) => {
     dbx.invalidate(req.data?.scope);
     return req.data?.scope
       ? `Cache entries matching "${req.data.scope}" dropped.`
       : 'Databricks cache cleared.';
   });
-
-  // ─── Legacy raw-data functions, kept for compatibility ────────────────────
 
   this.on('getData', async (req) => {
     try {
@@ -657,9 +636,6 @@ module.exports = cds.service.impl(async function () {
   });
 });
 
-// Exposed for offline testing (test/aggregation.test.js) — the in-memory
-// $filter / $apply implementation is exercised directly against CQN built
-// with cds.ql, without booting a server.
 module.exports.applyFilter = applyFilter;
 module.exports.applyOrderBy = applyOrderBy;
 module.exports.applyAggregation = applyAggregation;
@@ -669,3 +645,7 @@ module.exports.mapPpmRow = mapPpmRow;
 module.exports.mapSpendRow = mapSpendRow;
 module.exports.mapSupplierRow = mapSupplierRow;
 module.exports.PPM_SQL = PPM_SQL;
+module.exports.mapOpmRow = mapOpmRow;
+module.exports.mapOtdRow = mapOtdRow;
+module.exports.opmSql = opmSql;
+module.exports.otdSql = otdSql;

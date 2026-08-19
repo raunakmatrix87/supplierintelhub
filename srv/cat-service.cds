@@ -1,6 +1,5 @@
 using suplier_intel_hub as db from '../db/schema';
 
-// ─── Service Definition ───────────────────────────────────────────────────────
 
 service SupplierService @(path: '/api/supplier') {
 
@@ -17,15 +16,8 @@ service SupplierService @(path: '/api/supplier') {
 
   function getData() returns many cds.Map;
   function getSpendData() returns many cds.Map;
-
-  /**
-   * Everything the dashboard needs in a single round-trip: monthly OTD
-   * (actuals + forecast), per-site OTD, the KPI roll-up and compliance.
-   * The dashboard controller uses this instead of four separate reads.
-   */
   function getDashboard(supplierID : String) returns cds.Map;
 
-  /** Drops the Databricks result cache. Handy while tuning the views. */
   action refreshCache(scope : String) returns String;
 
   @readonly entity Segments as projection on db.Segments;
@@ -37,19 +29,14 @@ service SupplierService @(path: '/api/supplier') {
   entity Contacts           as projection on db.Contacts;
   entity PPMData            as projection on db.PPMData;
   entity PerformanceReviews as projection on db.PerformanceReviews;
-
-  // Derived from Databricks at read time — never written through OData.
-  // plantName is carried as a flat string (not plant.name) because the derived
-  // rows are not guaranteed to resolve against the Plants master list.
   @readonly entity DeliveryData    as projection on db.DeliveryData;
   @readonly entity DeliveryBySite  as projection on db.DeliveryBySite;
   @readonly entity OTDSummary      as projection on db.OTDSummary;
   @readonly entity ComplianceItems as projection on db.ComplianceItems;
+   @readonly entity OPMData         as projection on db.OPMData;
+  @readonly entity OTDData         as projection on db.OTDData;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Analytics metadata for the dashboard charts
-// ═══════════════════════════════════════════════════════════════════════════
 
 annotate SupplierService.DeliveryData with @(
   Aggregation.ApplySupported : {
@@ -83,7 +70,6 @@ annotate SupplierService.DeliveryData with @(
 annotate SupplierService.DeliveryData with @(
   UI.SelectionFields : [ yearMonth, plantName ],
 
-  // "On Time Delivery" — monthly trend, both tolerance windows.
   UI.Chart #OtdTrend : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'On Time Delivery',
@@ -133,7 +119,6 @@ annotate SupplierService.DeliveryData with {
   targetPercent         @Measures.Unit: '%';
 };
 
-// ─── OTD at Danfoss Sites ────────────────────────────────────────────────────
 
 annotate SupplierService.DeliveryBySite with @(
   Aggregation.ApplySupported : {
@@ -183,7 +168,6 @@ annotate SupplierService.DeliveryBySite with {
   targetPercent @Measures.Unit: '%';
 };
 
-// ─── OTD KPI card ────────────────────────────────────────────────────────────
 
 annotate SupplierService.OTDSummary with @(
   UI.DataPoint #Average : {
@@ -210,14 +194,8 @@ annotate SupplierService.OTDSummary with {
   targetPercent  @Measures.Unit: '%';
 };
 
-// ─── Overall Compliance card ─────────────────────────────────────────────────
 
 annotate SupplierService.ComplianceItems with @(
-  // Standard + its expiry date + the derived state. Three rows: ISO 9001,
-  // ISO 14001, IATF 16949 — sourced from the expiry-date columns of
-  // proc_silver.compliance (see srv/lib/compliance.js). An empty Expiry Date
-  // means the certificate was never captured, which is why the row still reads
-  // Noncompliant.
   UI.LineItem #Compliance : [
     { $Type: 'UI.DataField', Value: standard, Label: 'Compliance Details' },
     { $Type: 'UI.DataField', Value: validTo,  Label: 'Expiry Date' },
@@ -229,6 +207,3 @@ annotate SupplierService.ComplianceItems with @(
     Visualizations : [ '@UI.LineItem#Compliance' ]
   }
 );
-
-// SpendData aggregation + Spend Development chart stay where they were:
-// app/supplierintelhub/annotations.cds
