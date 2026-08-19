@@ -187,6 +187,7 @@ function mapOpmRow(row) {
     year,
     month,
     monthLabel:  monthShort(month),
+    yearMonth:   dbx.yearMonth(year, month),
     opm,
   };
 }

@@ -110,6 +110,26 @@
                     </uxap:ObjectPageSubSection>
                 </uxap:subSections>
             </uxap:ObjectPageSection>
+            <uxap:ObjectPageSection id="opmSection" title="Occurrence Per Million" titleUppercase="false">
+                <uxap:subSections>
+                    <uxap:ObjectPageSubSection id="opmSubSection">
+                        <FlexBox id="opmFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true">
+                            <VBox id="opmTrendBox" class="sapUiSmallMarginEnd" width="48%" minWidth="22rem">
+                                <macros:Chart
+                                    id="opmTrendChart"
+                                    metaPath="opmData/@com.sap.vocabularies.UI.v1.Chart#OpmTrend"
+                                    selectionMode="None"/>
+                            </VBox>
+                            <VBox id="opmRollingBox" width="48%" minWidth="22rem">
+                                <macros:Chart
+                                    id="opmRollingChart"
+                                    metaPath="opmData/@com.sap.vocabularies.UI.v1.Chart#OpmRolling"
+                                    selectionMode="None"/>
+                            </VBox>
+                        </FlexBox>
+                    </uxap:ObjectPageSubSection>
+                </uxap:subSections>
+            </uxap:ObjectPageSection>
             <uxap:ObjectPageSection id="otdSection" title="On Time Delivery" titleUppercase="false">
                 <uxap:subSections>
                     <uxap:ObjectPageSubSection id="otdSubSection">

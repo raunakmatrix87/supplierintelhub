@@ -171,3 +171,58 @@ annotate service.OTDData with @(
 annotate service.OTDData with {
   otd @Measures.Unit: '%';
 };
+
+annotate service.OPMData with @(
+  Aggregation.ApplySupported : {
+    $Type                  : 'Aggregation.ApplySupportedType',
+    Transformations        : [ 'aggregate', 'groupby', 'filter', 'orderby' ],
+    GroupableProperties    : [ yearMonth, monthLabel, year, month ],
+    AggregatableProperties : [
+      { $Type:'Aggregation.AggregatablePropertyType', Property: opm }
+    ]
+  },
+  Analytics.AggregatedProperty #avgOpm : {
+    $Type                : 'Analytics.AggregatedPropertyType',
+    Name                 : 'avgOpm',
+    AggregatableProperty : opm,
+    AggregationMethod    : 'average',
+    ![@Common.Label]     : 'OPM'
+  },
+
+  UI.Chart #OpmTrend : {
+    $Type           : 'UI.ChartDefinitionType',
+    Title           : 'Occurrence Per Million',
+    Description     : 'The rating gives evidence of product quality and rates number of claims issued by Danfoss based on definitions of Claims.',
+    ChartType       : #Column,
+    Dimensions      : [ yearMonth ],
+    DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOpm] ],
+    DimensionAttributes : [
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+    ],
+    MeasureAttributes : [
+      { $Type:'UI.ChartMeasureAttributeType',
+        DynamicMeasure: ![@Analytics.AggregatedProperty#avgOpm], Role: #Axis1 }
+    ]
+  },
+
+  UI.Chart #OpmRolling : {
+    $Type           : 'UI.ChartDefinitionType',
+    Title           : 'Occurrence Per Million',
+    Description     : 'Rolling 12 months',
+    ChartType       : #Line,
+    Dimensions      : [ yearMonth ],
+    DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOpm] ],
+    DimensionAttributes : [
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+    ],
+    MeasureAttributes : [
+      { $Type:'UI.ChartMeasureAttributeType',
+        DynamicMeasure: ![@Analytics.AggregatedProperty#avgOpm], Role: #Axis1 }
+    ]
+  },
+
+  UI.LineItem #OpmMonths : [
+    { $Type:'UI.DataField', Value: yearMonth, Label:'Period' },
+    { $Type:'UI.DataField', Value: opm,       Label:'OPM' }
+  ]
+);

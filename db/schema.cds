@@ -173,6 +173,7 @@ entity OPMData : sid {
   year       : Integer       @title: 'Year';
   month      : Integer       @title: 'Month';
   monthLabel : String(12)    @title: 'Month';
+  yearMonth  : String(7)     @title: 'Period';
   opm        : Integer       @title: 'OPM';
 }
 
