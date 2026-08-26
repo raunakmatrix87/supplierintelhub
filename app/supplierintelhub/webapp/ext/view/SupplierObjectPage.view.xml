@@ -67,7 +67,7 @@
                                 <ToolbarSpacer id="_IDGenToolbarSpacer"/>
                                 <SegmentedButton
                                     id="spendPeriod"
-                                    selectedKey="3"
+                                    selectedKey="all"
                                     selectionChange=".onSpendPeriodChange">
                                     <items>
                                         <SegmentedButtonItem id="_IDGenSegmentedButtonItem" key="3" text="Last 3 Years"/>

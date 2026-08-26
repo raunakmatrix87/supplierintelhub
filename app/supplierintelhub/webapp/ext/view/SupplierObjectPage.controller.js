@@ -3,9 +3,10 @@ sap.ui.define(
         "sap/fe/core/PageController",
         "sap/ui/mdc/p13n/StateUtil",
         "sap/ui/model/json/JSONModel",
-        "sap/ui/model/Sorter"
+        "sap/ui/model/Sorter",
+        "sap/base/Log"
     ],
-    function (PageController, StateUtil, JSONModel, Sorter) {
+    function (PageController, StateUtil, JSONModel, Sorter, Log) {
         "use strict";
 
         var PERIOD_YEARS = {
@@ -13,7 +14,9 @@ sap.ui.define(
             "5": 5,
             "all": null
         };
-        var DEFAULT_PERIOD = "3";
+        var DEFAULT_PERIOD = "all";
+
+        var LOG_COMPONENT = "supplierintelhub.ext.view.SupplierObjectPage";
 
         var OTD_TARGET = 95;
         var OTD_CRITICAL = 75;
@@ -26,6 +29,7 @@ sap.ui.define(
             onInit: function () {
                 PageController.prototype.onInit.apply(this, arguments);
                 this._periodInitDone = false;
+                this._latestSpendYear = null;
                 this._otdKpiPath = null;
                 this.getView().setModel(new JSONModel(emptyOtdKpi()), "otdKpi");
             },
@@ -48,6 +52,13 @@ sap.ui.define(
                 var oFilterBar = this._getSpendFilterBar();
                 if (oFilterBar && oFilterBar.initialized) {
                     this._periodInitDone = true;
+
+                    // Keep the toggle and the applied filter from drifting apart.
+                    var oToggle = this.byId("spendPeriod");
+                    if (oToggle && oToggle.setSelectedKey) {
+                        oToggle.setSelectedKey(DEFAULT_PERIOD);
+                    }
+
                     oFilterBar.initialized().then(function () {
                         this._applyPeriod(DEFAULT_PERIOD);
                     }.bind(this));
@@ -61,17 +72,96 @@ sap.ui.define(
             _applyPeriod: function (sKey) {
                 var oFilterBar = this._getSpendFilterBar();
                 if (!oFilterBar) {
-                    return;
+                    return Promise.resolve();
                 }
-                var iSpanYears = PERIOD_YEARS[sKey];
-                var aConditions = [];
-                if (iSpanYears) {
-                    var iMinYear = new Date().getFullYear() - iSpanYears + 1;
-                    aConditions = [{ operator: "GE", values: [iMinYear] }];
-                }
-                StateUtil.applyExternalState(oFilterBar, {
-                    filter: { year: aConditions }
+
+                return this._resolveMinYear(sKey).then(function (iMinYear) {
+                    return StateUtil.retrieveExternalState(oFilterBar).then(function (oState) {
+                        var aExisting = (oState && oState.filter && oState.filter.year) || [];
+                        var aConditions = [];
+                        var bAlreadySet = false;
+
+                        // applyExternalState applies a DELTA, it does not replace.
+                        // An empty array means "nothing to add", not "clear the field",
+                        // so every stale condition has to be sent back with
+                        // filtered:false or it survives - which is what left "All"
+                        // stuck on the previously selected range.
+                        aExisting.forEach(function (oCondition) {
+                            var bIsTarget = iMinYear !== null
+                                && oCondition.operator === "GE"
+                                && Number(oCondition.values && oCondition.values[0]) === iMinYear;
+
+                            if (bIsTarget) {
+                                bAlreadySet = true;
+                            } else {
+                                aConditions.push({
+                                    operator: oCondition.operator,
+                                    values: oCondition.values,
+                                    filtered: false
+                                });
+                            }
+                        });
+
+                        if (iMinYear !== null && !bAlreadySet) {
+                            aConditions.push({ operator: "GE", values: [iMinYear] });
+                        }
+
+                        if (!aConditions.length) {
+                            return undefined;
+                        }
+                        return StateUtil.applyExternalState(oFilterBar, {
+                            filter: { year: aConditions }
+                        });
+                    });
+                }).catch(function (oError) {
+                    Log.error("Could not apply spend period '" + sKey + "'", oError, LOG_COMPONENT);
                 });
+            },
+
+            // null = no lower bound ("All").
+            _resolveMinYear: function (sKey) {
+                var iSpanYears = PERIOD_YEARS[sKey];
+                if (!iSpanYears) {
+                    return Promise.resolve(null);
+                }
+                return this._getLatestSpendYear().then(function (iLatestYear) {
+                    return iLatestYear - iSpanYears + 1;
+                });
+            },
+
+            // Anchored on the newest year that actually has spend, so a year with
+            // no data loaded yet does not silently shorten the window.
+            _getLatestSpendYear: function () {
+                var oContext = this.getView().getBindingContext();
+                var sPath = oContext && oContext.getPath();
+                if (!sPath) {
+                    return Promise.resolve(new Date().getFullYear());
+                }
+                if (this._latestSpendYear && this._latestSpendYear.path === sPath) {
+                    return this._latestSpendYear.promise;
+                }
+
+                var pLatest = oContext.getModel()
+                    .bindList(
+                        sPath + "/spendData",
+                        undefined,
+                        [new Sorter("year", true)],
+                        undefined,
+                        { $select: "year" }
+                    )
+                    .requestContexts(0, 1)
+                    .then(function (aContexts) {
+                        var oRow = aContexts.length ? aContexts[0].getObject() : null;
+                        var iYear = oRow ? Number(oRow.year) : NaN;
+                        return isFinite(iYear) && iYear ? iYear : new Date().getFullYear();
+                    })
+                    .catch(function (oError) {
+                        Log.error("Could not read latest spend year", oError, LOG_COMPONENT);
+                        return new Date().getFullYear();
+                    });
+
+                this._latestSpendYear = { path: sPath, promise: pLatest };
+                return pLatest;
             },
 
             _getSpendFilterBar: function () {

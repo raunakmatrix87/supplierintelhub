@@ -50,13 +50,17 @@ const SPEND_COLUMNS = {
   amount       : 'total_spend',
 };
 
+// NOTE: the service does not read SPEND.periods - the 3/5/All toggle lives in
+// app/.../ext/view/SupplierObjectPage.controller.js (PERIOD_YEARS/DEFAULT_PERIOD)
+// and filters client-side. SpendData always returns every year. Kept here so the
+// two stay documented together; change the controller to change the UI default.
 const SPEND = {
   periods: [
     { key: '3',   label: 'Last 3 Years', years: 3 },
     { key: '5',   label: 'Last 5 Years', years: 5 },
     { key: 'all', label: 'All',          years: null },
   ],
-  defaultPeriod: '3',
+  defaultPeriod: 'all',
 
   fallbackColumn: null,
   fallbackFormat: null,
