@@ -5,7 +5,7 @@ const cds = require('@sap/cds');
 
 const dbx = require('./lib/dbx');
 const {
-  fq, fqPpm, TABLES, SUPPLIER_COLUMNS: SC, SPEND_COLUMNS: SPC, PPM_COLUMNS: PPMC,
+  fq, fqg, fqPpm, TABLES, SUPPLIER_COLUMNS: SC, SPEND_COLUMNS: SPC, PPM_COLUMNS: PPMC,
   OPM_COLUMNS: OPMC, OTD_COLUMNS: OTDC,
 
   OTD, COMPLIANCE_STANDARDS,
@@ -15,8 +15,7 @@ const compliance = require('./lib/compliance');
 
 const LOG = cds.log('supplier-service');
 
-const SUPPLIER_SQL = `SELECT * FROM ${fq(TABLES.supplierList)}`;
-const SPEND_SQL    = `SELECT * FROM ${fq(TABLES.spendByYear)}`;
+const SUPPLIER_SQL = `SELECT * FROM ${fqg(TABLES.supplierList)}`;
 
 function lazySql(label, build) {
   let pending = null;
@@ -98,52 +97,86 @@ const otdSql = lazySql('OTD', async () => {
   GROUP BY ${col(c.sourceSystemId)}, ${col(c.vendor)}, ${col(c.yearMonth)}`;
 });
 
+const spendSql = lazySql('SPEND', async () => {
+  const table = fqg(TABLES.spendByYear);
+  const c = await resolveOrThrow('SPEND', table, {
+    vendorNumber : SPC.vendorNumber,
+    year         : SPC.year,
+    amount       : SPC.amount,
+    supplierName : SPC.supplierName,
+  });
+  const { col } = dbx;
+  const name = c.supplierName
+    ? `MAX(${col(c.supplierName)})`
+    : 'CAST(NULL AS STRING)';
+
+  return `
+  SELECT
+    ${col(c.vendorNumber)} AS vendor_number,
+    ${name}                AS supplier_name,
+    ${col(c.year)}         AS year,
+    SUM(${col(c.amount)})  AS amount
+  FROM ${table}
+  WHERE ${col(c.vendorNumber)} IS NOT NULL
+    AND ${col(c.year)} IS NOT NULL
+  GROUP BY ${col(c.vendorNumber)}, ${col(c.year)}
+  ORDER BY vendor_number, year`;
+});
+
 const PPM_SQL      = `SELECT * FROM ${fqPpm(TABLES.ppmData)}`;
 
 const { clean, num, round, supplierIdFrom, monthShort, pick } = dbx;
 
 function mapSupplierRow(row) {
-  const segment = clean(row[SC.segment]);
-  const plant   = clean(row[SC.plant]);
-  const vendor  = supplierIdFrom(row[SC.vendorNumber]);
+  const segment = clean(pick(row, SC.segment));
+  const plant   = clean(pick(row, SC.plant));
+  const vendor  = supplierIdFrom(pick(row, SC.vendorNumber));
 
   return {
     ID:               vendor,
     vendorNumber:     vendor,
-    name:             clean(row[SC.name]),
-    responsible:      clean(row[SC.responsible]),
-    category:         clean(row[SC.category]),
-    subcategory:      clean(row[SC.subcategory]),
-    mainSupplies:     clean(row[SC.mainSupplies]),
-    score:            num(row[SC.score]),
-    nextReview:       clean(row[SC.nextReview]),
-    complianceStatus: clean(row[SC.complianceStatus]),
-    isTopSupplier:    row[SC.isTopSupplier] ?? false,
+    name:             clean(pick(row, SC.name)),
+    responsible:      clean(pick(row, SC.responsible)),
+    category:         clean(pick(row, SC.category)),
+    subcategory:      clean(pick(row, SC.subcategory)),
+    mainSupplies:     clean(pick(row, SC.mainSupplies)),
+    score:            num(pick(row, SC.score)),
+    nextReview:       clean(pick(row, SC.nextReview)),
+    complianceStatus: clean(pick(row, SC.complianceStatus)),
+    isTopSupplier:    pick(row, SC.isTopSupplier) ?? false,
     segmentText:      segment,
     plantText:        plant,
     segmentName:      segment,
     plantName:        plant,
-    plantLocation:    SC.plantLocation ? clean(row[SC.plantLocation]) : null,
+    plantLocation:    SC.plantLocation ? clean(pick(row, SC.plantLocation)) : null,
 
-    activeQualityClaims: num(row[SC.activeQualityClaims]),
-    currentPPM:          round(row[SC.currentPPM], 2),
-    currentOTD:          round(row[SC.currentOTD], 2),
+    activeQualityClaims: num(pick(row, SC.activeQualityClaims)),
+    currentPPM:          round(pick(row, SC.currentPPM), 2),
+    currentOTD:          round(pick(row, SC.currentOTD), 2),
   };
 }
 
+// Reads the aliases produced by spendSql(), not raw source column names.
 function mapSpendRow(row) {
-  const vendor = supplierIdFrom(row[SPC.vendorNumber]);
-  const year   = num(row[SPC.year]);
+  const vendor = supplierIdFrom(pick(row, 'vendor_number'));
+  const year   = num(pick(row, 'year'));
 
   return {
     ID:           [vendor, year].filter((v) => v !== null).join('-') || cds.utils.uuid(),
     supplier_ID:  vendor,
     vendorNumber: vendor,
-    supplierName: clean(row[SPC.supplierName]),
+    supplierName: clean(pick(row, 'supplier_name')) ?? null,
     year,
     yearLabel:    year === null ? null : String(year),
-    amount:       round(row[SPC.amount], 2),
+    amount:       round(pick(row, 'amount'), 2),
   };
+}
+
+function withSupplierName(rec, index) {
+  if (!rec.supplierName && rec.supplier_ID && index && index.idToName) {
+    rec.supplierName = index.idToName.get(rec.supplier_ID) ?? null;
+  }
+  return rec;
 }
 
 function mapPpmRow(row) {
@@ -228,20 +261,22 @@ async function supplierIndex() {
   const rows = await dbx.query(SUPPLIER_SQL);
 
   const nameToIds = new Map();
+  const idToName = new Map();
   const knownIds = new Set();
 
   for (const row of rows) {
-    const id = supplierIdFrom(row[SC.vendorNumber]);
+    const id = supplierIdFrom(pick(row, SC.vendorNumber));
     if (!id) continue;
     knownIds.add(id);
 
-    const name = clean(row[SC.name]);
+    const name = clean(pick(row, SC.name));
     if (!name) continue;
+    if (!idToName.has(id)) idToName.set(id, name);
     if (!nameToIds.has(name)) nameToIds.set(name, []);
     if (!nameToIds.get(name).includes(id)) nameToIds.get(name).push(id);
   }
 
-  return { nameToIds, knownIds };
+  return { nameToIds, idToName, knownIds };
 }
 
 function resolveSuppliers(rows, index, mapper, vendorColumn = 'vendor_number') {
@@ -384,6 +419,19 @@ function applyAggregation(rows, SELECT) {
   return out;
 }
 
+function failWith(req, err, where, subject) {
+  const info = dbx.classifyError(err);
+  const text = subject
+    ? `Could not load ${subject}. ${info.message}`
+    : info.message;
+
+  LOG.error(`${where} failed [${info.code}] ${info.object || ''} - ${info.message}`);
+  LOG.error(`${where} source error: ${info.detail}`);
+  LOG.debug(`${where} stack:`, err);
+
+  return req.error({ code: info.code, status: info.status, message: text });
+}
+
 function serveFromDatabricks(label, load, opts = {}) {
   return async function handler(req, next) {
     try {
@@ -417,8 +465,7 @@ function serveFromDatabricks(label, load, opts = {}) {
         (aggregated ? ' (aggregated)' : ''));
       return page;
     } catch (err) {
-      LOG.error(`${label} READ failed:`, err);
-      return req.error(502, `Failed to fetch ${label} from Databricks: ${err.message}`);
+      return failWith(req, err, `${label} READ`, label);
     }
   };
 }
@@ -518,8 +565,17 @@ module.exports = cds.service.impl(async function () {
   }));
 
   this.on('READ', 'SpendData', serveFromDatabricks('SpendData', async () => {
-    const rows = await dbx.query(SPEND_SQL);
-    return rows.map(mapSpendRow).sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
+    const [rows, index] = await Promise.all([
+      dbx.query(await spendSql()),
+      supplierIndex(),
+    ]);
+
+    const mapped = rows.map((row) => withSupplierName(mapSpendRow(row), index));
+    const unkeyed = mapped.filter((r) => !r.supplier_ID).length;
+    LOG.info(`SpendData: ${rows.length} aggregated row(s) from ${TABLES.spendByYear}` +
+      (unkeyed ? `, ${unkeyed} without a vendor key` : ''));
+
+    return mapped.sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
   }));
 
   this.on('READ', 'PPMData', serveFromDatabricks('PPMData', async () => {
@@ -604,8 +660,7 @@ module.exports = cds.service.impl(async function () {
         standards: COMPLIANCE_STANDARDS.map((s) => s.label),
       };
     } catch (err) {
-      LOG.error('getDashboard failed:', err);
-      return req.error(502, `Failed to build dashboard: ${err.message}`);
+      return failWith(req, err, 'getDashboard', 'the dashboard');
     }
   });
 
@@ -621,18 +676,19 @@ module.exports = cds.service.impl(async function () {
       const rows = await dbx.query(SUPPLIER_SQL);
       return rows.map(mapSupplierRow);
     } catch (err) {
-      LOG.error('getData failed:', err);
-      return req.error(502, `Failed to fetch data from Databricks: ${err.message}`);
+      return failWith(req, err, 'getData', 'supplier data');
     }
   });
 
   this.on('getSpendData', async (req) => {
     try {
-      const rows = await dbx.query(SPEND_SQL);
-      return rows.map(mapSpendRow);
+      const [rows, index] = await Promise.all([
+        dbx.query(await spendSql()),
+        supplierIndex(),
+      ]);
+      return rows.map((row) => withSupplierName(mapSpendRow(row), index));
     } catch (err) {
-      LOG.error('getSpendData failed:', err);
-      return req.error(502, `Failed to load spend data: ${err.message}`);
+      return failWith(req, err, 'getSpendData', 'spend data');
     }
   });
 });
@@ -650,3 +706,4 @@ module.exports.mapOpmRow = mapOpmRow;
 module.exports.mapOtdRow = mapOtdRow;
 module.exports.opmSql = opmSql;
 module.exports.otdSql = otdSql;
+module.exports.spendSql = spendSql;

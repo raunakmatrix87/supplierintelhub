@@ -7,6 +7,112 @@ const { CACHE } = require('./dbx-config');
 
 const LOG = cds.log('databricks');
 
+const MAX_ERROR_DETAIL = 2000;
+
+function errorText(err) {
+  if (!err) return '';
+  const seen = new Set();
+  const parts = [];
+  const push = (v) => {
+    if (typeof v !== 'string') return;
+    const t = v.trim();
+    if (!t || seen.has(t)) return;
+    seen.add(t);
+    parts.push(t);
+  };
+  push(err.message);
+  push(err.code);
+  push(err.response && err.response.displayMessage);
+  push(err.response && err.response.sqlState);
+  push(err.response && err.response.errorMessage);
+  return parts.join('\n');
+}
+
+function objectFrom(sqlText) {
+  if (typeof sqlText !== 'string') return null;
+  const m = sqlText.match(
+    /(?:FROM|JOIN|DESCRIBE\s+TABLE|INTO)\s+([A-Za-z0-9_]+\.[A-Za-z0-9_]+\.`?[A-Za-z0-9_]+`?)/i
+  );
+  return m ? m[1].replace(/`/g, '') : null;
+}
+
+const ERROR_RULES = [
+  {
+    code   : 'SOURCE_UNREACHABLE',
+    status : 503,
+    test   : /FAILED_JDBC|SQLSTATE:\s*HV000|Failed to connect to the database/i,
+    message: (ctx) =>
+      `The source database behind ${ctx.catalog ? `the "${ctx.catalog}" catalog` : 'the federated catalog'} ` +
+      'is not reachable from Databricks. This is a data-source outage, not an application error - ' +
+      'check the Unity Catalog connection credentials, the database server status and its network access.',
+  },
+  {
+    code   : 'NOT_CONFIGURED',
+    status : 503,
+    test   : /Missing Databricks config/i,
+    message: () =>
+      'Databricks is not configured for this environment. Set DATABRICKS_SERVER_HOSTNAME, ' +
+      'DATABRICKS_HTTP_PATH and DATABRICKS_TOKEN in .env.',
+  },
+  {
+    code   : 'UNAUTHORIZED',
+    status : 502,
+    test   : /Invalid access token|\bHTTP 40[13]\b|statusCode.?.?40[13]|PERMISSION_DENIED|UNAUTHORIZED|INSUFFICIENT_PERMISSIONS|token (?:has )?expired|expired token/i,
+    message: (ctx) =>
+      `Databricks rejected the request as unauthorised${ctx.object ? ` for ${ctx.object}` : ''}. ` +
+      'The access token may have expired, or the principal is missing rights on the catalog.',
+  },
+  {
+    code   : 'OBJECT_NOT_FOUND',
+    status : 502,
+    test   : /TABLE_OR_VIEW_NOT_FOUND|SCHEMA_NOT_FOUND|CATALOG_NOT_FOUND|cannot be found|does not exist/i,
+    message: (ctx) =>
+      `${ctx.object || 'The requested table'} does not exist in Databricks. ` +
+      'Check TABLES / catalog settings in srv/lib/dbx-config.js.',
+  },
+  {
+    code   : 'COLUMN_MISMATCH',
+    status : 500,
+    test   : /has no column matching/i,
+    message: (ctx, detail) => detail.split('\n')[0],
+  },
+  {
+    code   : 'WAREHOUSE_UNAVAILABLE',
+    status : 503,
+    test   : /ETIMEDOUT|ECONNREFUSED|ENOTFOUND|ECONNRESET|socket hang up|TEMPORARILY_UNAVAILABLE|starting/i,
+    message: () =>
+      'The Databricks SQL warehouse could not be reached. It may be stopped, starting up, ' +
+      'or blocked by the network.',
+  },
+];
+
+const FALLBACK_RULE = {
+  code   : 'QUERY_FAILED',
+  status : 502,
+  message: (ctx, detail) => {
+    const first = (detail.split('\n')[0] || 'Unknown error').slice(0, 300);
+    return `Databricks query failed${ctx.object ? ` for ${ctx.object}` : ''}: ${first}`;
+  },
+};
+
+function classifyError(err, context = {}) {
+  const detail = errorText(err);
+  const object = context.object || objectFrom(err && err.dbxSql) || null;
+  const catalog = object ? object.split('.')[0] : null;
+  const ctx = { ...context, object, catalog };
+
+  const rule = ERROR_RULES.find((r) => r.test.test(detail)) || FALLBACK_RULE;
+
+  return {
+    code    : rule.code,
+    status  : rule.status,
+    message : rule.message(ctx, detail),
+    object,
+    catalog,
+    detail  : detail.slice(0, MAX_ERROR_DETAIL),
+  };
+}
+
 const cache = new Map();
 const inFlight = new Map();
 
@@ -67,6 +173,9 @@ async function runStatement(sqlText, maxRows) {
 
     LOG.info(`query ok  ${rows.length} rows  ${Date.now() - started}ms`);
     return rows;
+  } catch (err) {
+    try { if (err && !err.dbxSql) err.dbxSql = sqlText; } catch { }
+    throw err;
   } finally {
     if (session) { try { await session.close(); } catch {  } }
     try { await client.close(); } catch {  }
@@ -99,12 +208,14 @@ async function query(sqlText, options = {}) {
 
 const col = (name) => '`' + String(name).replace(/`/g, '``') + '`';
 
+// Separator-insensitive: "Source system ID", "source_system_id" and
+// "SourceSystemID" all normalise to "sourcesystemid", so a rename that only
+// changes casing or separators no longer silently yields null columns.
 const normaliseColumn = (name) => String(name ?? '')
   .normalize('NFKC')
   .replace(/[\u200B-\u200D\uFEFF]/g, '')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .toLowerCase();
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '');
 
 const describeColumn = (name) => String(name ?? '').replace(
   /[^\x20-\x7E]/g,
@@ -224,6 +335,8 @@ const monthShort = (month) => (monthName(month) || '').slice(0, 3) || null;
 module.exports = {
   query,
   invalidate,
+  classifyError,
+  errorText,
   col,
   normaliseColumn,
   describeColumn,

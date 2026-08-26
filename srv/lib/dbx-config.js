@@ -2,7 +2,9 @@
 
 const CATALOG = process.env.DATABRICKS_CATALOG || 'bs_db_dev';
 const SCHEMA = process.env.DATABRICKS_SCHEMA || 'proc_silver';
+const SCHEMA_Gold = process.env.DATABRICKS_SCHEMA_Gold || 'proc_gold';
 const fq = (object) => `${CATALOG}.${SCHEMA}.\`${object}\``;
+const fqg = (object) => `${CATALOG}.${SCHEMA_Gold}.\`${object}\``;
 
 const PPM_CATALOG = process.env.DATABRICKS_PPM_CATALOG || 'bs_db_sql_bs_reporting';
 const PPM_SCHEMA = process.env.DATABRICKS_PPM_SCHEMA || 'dbo';
@@ -10,7 +12,7 @@ const fqPpm = (object) => `${PPM_CATALOG}.${PPM_SCHEMA}.\`${object}\``;
 
 const TABLES = {
   supplierList : 'fiori_mv_supplier_list',
-  spendByYear  : 'fiori_mv_spend_by_year',
+  spendByYear  : 'fiori_transactional_2021_to_current_year',
   compliance   : 'compliance',
   vendorMaster : 'd_vendormaster',
   otdForecast  : 'fiori_mv_otd_forecast',
@@ -37,11 +39,15 @@ const SUPPLIER_COLUMNS = {
   plantLocation       : null,
 };
 
+// Source: fiori_transactional_2021_to_current_year (proc_gold).
+// The table is at material/plant grain; spend is summed per vendor + year in SQL.
+// supplierName is not carried on the fact table - it is filled from the supplier
+// list at map time. Set it here only if a name column is ever added.
 const SPEND_COLUMNS = {
-  vendorNumber : 'SourceSystemVendorNumber',
-  supplierName : 'supplier',
-  year         : 'year',
-  amount       : 'spend',
+  vendorNumber : 'sourcesystem_vendornumber',
+  supplierName : null,
+  year         : 'apd_year',
+  amount       : 'total_spend',
 };
 
 const SPEND = {
@@ -172,7 +178,9 @@ const CACHE = {
 module.exports = {
   CATALOG,
   SCHEMA,
+  SCHEMA_Gold,
   fq,
+  fqg,
   PPM_CATALOG,
   PPM_SCHEMA,
   fqPpm,
