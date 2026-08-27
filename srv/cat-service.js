@@ -455,8 +455,8 @@ function applyAggregation(rows, SELECT) {
   return out;
 }
 
-// Collapses rows that share the same logical key (e.g. supplier name), keeping the
-// first occurrence. Rows without a key are always kept — they cannot be judged duplicates.
+// Collapses rows that share the same logical key, keeping the first occurrence.
+// Rows without a key are always kept — they cannot be judged duplicates.
 function dedupeRows(rows, keyOf) {
   const seen = new Set();
   const out = [];
@@ -624,8 +624,12 @@ module.exports = cds.service.impl(async function () {
     }
     return mapped;
   }, {
-    // One row per supplier name in the list; the object page still reads by ID.
-    dedupeBy: (row) => row.name,
+    // One row per supplier per segment/plant combination. Deduping on the name alone
+    // hid every vendor record but the first, so a supplier listed at several Danfoss
+    // plants could only be opened at one of them. The object page still reads by ID.
+    dedupeBy: (row) => (row.name
+      ? [row.name, row.segmentName, row.plantName].map((v) => v ?? '').join('\u0001')
+      : null),
     onDuplicate: (id) => LOG.warn(
       `Duplicate ${SC.vendorNumber} "${id}" in ${TABLES.supplierList}. ` +
       'Suppliers.ID assumes it is unique — spend and OTD may attach to the wrong record.'
