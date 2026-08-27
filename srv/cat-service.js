@@ -179,6 +179,37 @@ function withSupplierName(rec, index) {
   return rec;
 }
 
+// Segment and Danfoss Plant live on the supplier list, not on the metric tables.
+// Stamping them onto each child row is what lets the charts stack by them.
+function withSupplierMeta(rec, index) {
+  withSupplierName(rec, index);
+  if (rec.supplier_ID && index) {
+    if (rec.segmentName === undefined || rec.segmentName === null) {
+      rec.segmentName = index.idToSegment?.get(rec.supplier_ID) ?? null;
+    }
+    if (rec.plantName === undefined || rec.plantName === null) {
+      rec.plantName = index.idToPlant?.get(rec.supplier_ID) ?? null;
+    }
+  }
+  // One combined series keeps a stacked column readable: two separate series
+  // dimensions make sap.viz overlay the bars instead of stacking them.
+  if (rec.segmentPlant === undefined || rec.segmentPlant === null) {
+    const parts = [rec.segmentName, rec.plantName].filter(Boolean);
+    rec.segmentPlant = parts.length ? parts.join(' / ') : null;
+  }
+  return rec;
+}
+
+// A supplier name can span several vendor numbers, one per segment/plant. The list
+// shows one row per name, so the object page charts read every sibling vendor number
+// and let the stack dimension separate them again.
+async function siblingSupplierIds(supplierId) {
+  const index = await supplierIndex();
+  const name = index.idToName.get(supplierId);
+  const ids = name ? index.nameToIds.get(name) : null;
+  return new Set(ids && ids.length ? ids : [supplierId]);
+}
+
 function mapPpmRow(row) {
   const vendor = supplierIdFrom(pick(row, PPMC.vendorNumber));
 
@@ -262,12 +293,17 @@ async function supplierIndex() {
 
   const nameToIds = new Map();
   const idToName = new Map();
+  const idToSegment = new Map();
+  const idToPlant = new Map();
   const knownIds = new Set();
 
   for (const row of rows) {
     const id = supplierIdFrom(pick(row, SC.vendorNumber));
     if (!id) continue;
     knownIds.add(id);
+
+    if (!idToSegment.has(id)) idToSegment.set(id, clean(pick(row, SC.segment)));
+    if (!idToPlant.has(id)) idToPlant.set(id, clean(pick(row, SC.plant)));
 
     const name = clean(pick(row, SC.name));
     if (!name) continue;
@@ -276,7 +312,7 @@ async function supplierIndex() {
     if (!nameToIds.get(name).includes(id)) nameToIds.get(name).push(id);
   }
 
-  return { nameToIds, idToName, knownIds };
+  return { nameToIds, idToName, idToSegment, idToPlant, knownIds };
 }
 
 function resolveSuppliers(rows, index, mapper, vendorColumn = 'vendor_number') {
@@ -419,6 +455,22 @@ function applyAggregation(rows, SELECT) {
   return out;
 }
 
+// Collapses rows that share the same logical key (e.g. supplier name), keeping the
+// first occurrence. Rows without a key are always kept — they cannot be judged duplicates.
+function dedupeRows(rows, keyOf) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const raw = keyOf(row);
+    const key = raw === null || raw === undefined ? '' : String(raw).trim().toLowerCase();
+    if (!key) { out.push(row); continue; }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
 function failWith(req, err, where, subject) {
   const info = dbx.classifyError(err);
   const text = subject
@@ -446,8 +498,22 @@ function serveFromDatabricks(label, load, opts = {}) {
       const { SELECT } = req.query;
 
       const navSupplierId = extractNavigationSupplierId(SELECT);
-      let rows = navSupplierId ? all.filter((r) => r.supplier_ID === navSupplierId) : all;
+      let rows = all;
+      if (navSupplierId) {
+        const ids = opts.rollupByName
+          ? await siblingSupplierIds(navSupplierId)
+          : new Set([navSupplierId]);
+        rows = all.filter((r) => ids.has(r.supplier_ID));
+      }
       rows = applyFilter(rows, SELECT?.where);
+
+      if (opts.dedupeBy) {
+        const before = rows.length;
+        rows = dedupeRows(rows, opts.dedupeBy);
+        if (before !== rows.length) {
+          LOG.debug(`${label} READ collapsed ${before - rows.length} duplicate row(s)`);
+        }
+      }
 
       const aggregated = applyAggregation(rows, SELECT);
       if (aggregated) rows = aggregated;
@@ -558,6 +624,8 @@ module.exports = cds.service.impl(async function () {
     }
     return mapped;
   }, {
+    // One row per supplier name in the list; the object page still reads by ID.
+    dedupeBy: (row) => row.name,
     onDuplicate: (id) => LOG.warn(
       `Duplicate ${SC.vendorNumber} "${id}" in ${TABLES.supplierList}. ` +
       'Suppliers.ID assumes it is unique — spend and OTD may attach to the wrong record.'
@@ -570,37 +638,37 @@ module.exports = cds.service.impl(async function () {
       supplierIndex(),
     ]);
 
-    const mapped = rows.map((row) => withSupplierName(mapSpendRow(row), index));
+    const mapped = rows.map((row) => withSupplierMeta(mapSpendRow(row), index));
     const unkeyed = mapped.filter((r) => !r.supplier_ID).length;
     LOG.info(`SpendData: ${rows.length} aggregated row(s) from ${TABLES.spendByYear}` +
       (unkeyed ? `, ${unkeyed} without a vendor key` : ''));
 
     return mapped.sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
-  }));
+  }, { rollupByName: true }));
 
   this.on('READ', 'PPMData', serveFromDatabricks('PPMData', async () => {
-    const rows = await dbx.query(PPM_SQL);
+    const [rows, index] = await Promise.all([dbx.query(PPM_SQL), supplierIndex()]);
     LOG.info(`PPMData: fetched ${rows.length} raw row(s) from Databricks (${TABLES.ppmData})`);
     if (rows.length) LOG.info('PPMData: sample raw row(s)', rows.slice(0, 3));
 
-    const mapped = rows.map(mapPpmRow);
+    const mapped = rows.map((row) => withSupplierMeta(mapPpmRow(row), index));
     LOG.info(`PPMData: mapped ${mapped.length} row(s) to CDS schema`);
     if (mapped.length) LOG.info('PPMData: sample mapped row(s)', mapped.slice(0, 3));
 
     return mapped.sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || (a.month ?? 0) - (b.month ?? 0));
-  }));
+  }, { rollupByName: true }));
   this.on('READ', 'OPMData', serveFromDatabricks('OPMData', async () => {
-    const rows = await dbx.query(await opmSql());
-    return rows.map(mapOpmRow)
+    const [rows, index] = await Promise.all([dbx.query(await opmSql()), supplierIndex()]);
+    return rows.map((row) => withSupplierMeta(mapOpmRow(row), index))
       .sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || (a.month ?? 0) - (b.month ?? 0));
-  }));
+  }, { rollupByName: true }));
 
   this.on('READ', 'OTDData', serveFromDatabricks('OTDData', async () => {
-    const rows = await dbx.query(await otdSql());
+    const [rows, index] = await Promise.all([dbx.query(await otdSql()), supplierIndex()]);
     LOG.info(`OTDData: fetched ${rows.length} raw row(s) from Databricks (${TABLES.otdData})`);
     if (rows.length) LOG.info('OTDData: sample raw row(s)', rows.slice(0, 3));
 
-    const mapped = rows.map(mapOtdRow)
+    const mapped = rows.map((row) => withSupplierMeta(mapOtdRow(row), index))
       .sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || (a.month ?? 0) - (b.month ?? 0));
 
     const unkeyed = mapped.filter((r) => !r.supplier_ID).length;
@@ -609,7 +677,7 @@ module.exports = cds.service.impl(async function () {
         '(missing "Source system ID" or "Vendor"); they will not attach to a supplier.');
     }
     return mapped;
-  }));
+  }, { rollupByName: true }));
 
   this.on('READ', 'DeliveryData',    serveFromDatabricks('DeliveryData', loadMonthlyOtd));
   this.on('READ', 'DeliveryBySite',  serveFromDatabricks('DeliveryBySite', loadSiteOtd));

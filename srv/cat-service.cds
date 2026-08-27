@@ -74,14 +74,15 @@ annotate SupplierService.DeliveryData with @(
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'On Time Delivery',
     Description     : 'Purchase order line items delivered on time to the required date and quantity, divided by total line items required.',
-    ChartType       : #Column,
-    Dimensions      : [ monthLabel ],
+    ChartType       : #ColumnStacked,
+    Dimensions      : [ monthLabel, plantName ],
     DynamicMeasures : [
       ![@Analytics.AggregatedProperty#avgOtdStrict],
       ![@Analytics.AggregatedProperty#avgOtdTolerant]
     ],
     DimensionAttributes : [
-      { $Type: 'UI.ChartDimensionAttributeType', Dimension: monthLabel, Role: #Category }
+      { $Type: 'UI.ChartDimensionAttributeType', Dimension: monthLabel, Role: #Category },
+      { $Type: 'UI.ChartDimensionAttributeType', Dimension: plantName, Role: #Series }
     ],
     MeasureAttributes : [
       { $Type          : 'UI.ChartMeasureAttributeType',
@@ -141,7 +142,7 @@ annotate SupplierService.DeliveryBySite with @(
   UI.Chart #SiteOtd : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'On Time Delivery at Danfoss Sites',
-    ChartType       : #Bar,
+    ChartType       : #ColumnStacked,
     Dimensions      : [ plantName ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#siteOtd] ],
     DimensionAttributes : [
