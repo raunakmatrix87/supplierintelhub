@@ -75,6 +75,9 @@ entity SpendData : sid {
   supplier     : Association to Suppliers;
   vendorNumber : String(40)     @title: 'Vendor Number';
   supplierName : String(200)    @title: 'Supplier';
+  segmentName  : String(100)    @title: 'Segment';
+  plantName    : String(100)    @title: 'Danfoss Plant';
+  segmentPlant : String(210)    @title: 'Segment / Danfoss Plant';
   year         : Integer        @title: 'Year';
   yearLabel    : String(4)      @title: 'Year';
   amount       : Decimal(15,2)  @title: 'Spend Amount (EUR)';
@@ -160,6 +163,9 @@ entity ComplianceItems : sid {
 
 entity PPMData : sid {
   supplier   : Association to Suppliers;
+  segmentName  : String(100)    @title: 'Segment';
+  plantName    : String(100)    @title: 'Danfoss Plant';
+  segmentPlant : String(210)    @title: 'Segment / Danfoss Plant';
   year       : Integer       @title: 'Year';
   month      : Integer       @title: 'Month';
   monthLabel : String(12)    @title: 'Month';
@@ -170,6 +176,9 @@ entity PPMData : sid {
 
 entity OPMData : sid {
   supplier   : Association to Suppliers;
+  segmentName  : String(100)    @title: 'Segment';
+  plantName    : String(100)    @title: 'Danfoss Plant';
+  segmentPlant : String(210)    @title: 'Segment / Danfoss Plant';
   year       : Integer       @title: 'Year';
   month      : Integer       @title: 'Month';
   monthLabel : String(12)    @title: 'Month';
@@ -179,6 +188,9 @@ entity OPMData : sid {
 
 entity OTDData : sid {
   supplier   : Association to Suppliers;
+  segmentName  : String(100)    @title: 'Segment';
+  plantName    : String(100)    @title: 'Danfoss Plant';
+  segmentPlant : String(210)    @title: 'Segment / Danfoss Plant';
   year       : Integer       @title: 'Year';
   month      : Integer       @title: 'Month';
   monthLabel : String(12)    @title: 'Month';

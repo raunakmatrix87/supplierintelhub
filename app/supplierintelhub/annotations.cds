@@ -6,8 +6,6 @@ annotate service.Suppliers with @(
   UI.SelectionFields : [ segmentName, plantName, responsible, complianceStatus ],
   UI.LineItem : [
     {$Type:'UI.DataField',Value:name,Label:'Name',![@UI.Importance]:#High},
-    {$Type:'UI.DataField',Value:segmentName,Label:'Segment',![@UI.Importance]:#High},
-    {$Type:'UI.DataField',Value:plantName,Label:'Danfoss Plant',![@UI.Importance]:#High},
     {$Type:'UI.DataField',Value:responsible,Label:'Supplier Responsible',![@UI.Importance]:#High}
   ],
   UI.SelectionVariant #All : { $Type:'UI.SelectionVariantType', Text:'All Suppliers', SelectOptions:[] },
@@ -20,7 +18,7 @@ annotate service.SpendData with @(
   Aggregation.ApplySupported : {
     $Type                  : 'Aggregation.ApplySupportedType',
     Transformations        : [ 'aggregate', 'groupby', 'filter' ],
-    GroupableProperties    : [ year ],
+    GroupableProperties    : [ year, segmentName, plantName, segmentPlant ],
     AggregatableProperties : [ { $Type:'Aggregation.AggregatablePropertyType', Property: amount } ]
   },
   Analytics.AggregatedProperty #totalSpend : {
@@ -31,14 +29,15 @@ annotate service.SpendData with @(
     ![@Common.Label]     : 'Spend Amount (EUR)'
   },
   UI.SelectionFields : [ year ],
-  UI.Chart : {
+  UI.Chart #SpendStacked : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Spend Development',
-    ChartType       : #Column,
-    Dimensions      : [ year ],
+    ChartType       : #ColumnStacked,
+    Dimensions      : [ year, segmentPlant ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#totalSpend] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category },
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -51,7 +50,7 @@ annotate service.PPMData with @(
   Aggregation.ApplySupported : {
     $Type                  : 'Aggregation.ApplySupportedType',
     Transformations        : [ 'aggregate', 'groupby', 'filter', 'orderby' ],
-    GroupableProperties    : [ yearMonth, monthLabel, year, month ],
+    GroupableProperties    : [ yearMonth, monthLabel, year, month, segmentName, plantName, segmentPlant ],
     AggregatableProperties : [
       { $Type:'Aggregation.AggregatablePropertyType', Property: ppm },
       { $Type:'Aggregation.AggregatablePropertyType', Property: target }
@@ -65,31 +64,32 @@ annotate service.PPMData with @(
     ![@Common.Label]     : 'PPM'
   },
 
-  UI.Chart #PpmTrend : {
+  UI.Chart #PpmStacked : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Parts Per Million',
     Description     : 'Evidence of product quality — rates the quantity of nonconforming parts on production lines and/or at customer locations.',
-    ChartType       : #Column,
-    Dimensions      : [ yearMonth ],
+    ChartType       : #ColumnStacked,
+    Dimensions      : [ yearMonth, segmentPlant ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgPpm] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category },
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
         DynamicMeasure: ![@Analytics.AggregatedProperty#avgPpm], Role: #Axis1 }
     ]
   },
-
   UI.Chart #PpmYoY : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Parts Per Million - Year over Year',
     Description     : 'Year-over-year comparison',
-    ChartType       : #Column,
-    Dimensions      : [ year ],
+    ChartType       : #ColumnStacked,
+    Dimensions      : [ year, segmentPlant ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgPpm] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category },
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -102,7 +102,7 @@ annotate service.OTDData with @(
   Aggregation.ApplySupported : {
     $Type                  : 'Aggregation.ApplySupportedType',
     Transformations        : [ 'aggregate', 'groupby', 'filter', 'orderby' ],
-    GroupableProperties    : [ yearMonth, monthLabel, year, month ],
+    GroupableProperties    : [ yearMonth, monthLabel, year, month, segmentName, plantName, segmentPlant ],
     AggregatableProperties : [
       { $Type:'Aggregation.AggregatablePropertyType', Property: otd }
     ]
@@ -115,31 +115,32 @@ annotate service.OTDData with @(
     ![@Common.Label]     : 'On Time Delivery %'
   },
 
-  UI.Chart #OtdTrend : {
+  UI.Chart #OtdStacked : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'On Time Delivery',
-    Description     : 'The number of purchase order line items delivered on time to the required date and quantity, divided by the number of total purchase order line items required.',
-    ChartType       : #Column,
-    Dimensions      : [ yearMonth ],
+    Description     : 'Purchase order line items delivered on time to the required date and quantity, divided by total line items required.',
+    ChartType       : #ColumnStacked,
+    Dimensions      : [ yearMonth, segmentPlant ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOtd] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category },
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
         DynamicMeasure: ![@Analytics.AggregatedProperty#avgOtd], Role: #Axis1 }
     ]
   },
-
   UI.Chart #OtdYoY : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'On Time Delivery - Year over Year',
     Description     : 'Year-over-year comparison',
-    ChartType       : #Column,
-    Dimensions      : [ year ],
+    ChartType       : #ColumnStacked,
+    Dimensions      : [ year, segmentPlant ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOtd] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category },
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -147,7 +148,7 @@ annotate service.OTDData with @(
     ]
   },
 
-  UI.Chart #OtdAverage : {
+   UI.Chart #OtdAverage : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'On Time Delivery - Average Results',
     ChartType       : #Line,
@@ -176,7 +177,7 @@ annotate service.OPMData with @(
   Aggregation.ApplySupported : {
     $Type                  : 'Aggregation.ApplySupportedType',
     Transformations        : [ 'aggregate', 'groupby', 'filter', 'orderby' ],
-    GroupableProperties    : [ yearMonth, monthLabel, year, month ],
+    GroupableProperties    : [ yearMonth, monthLabel, year, month, segmentName, plantName, segmentPlant ],
     AggregatableProperties : [
       { $Type:'Aggregation.AggregatablePropertyType', Property: opm }
     ]
@@ -189,31 +190,32 @@ annotate service.OPMData with @(
     ![@Common.Label]     : 'OPM'
   },
 
-  UI.Chart #OpmTrend : {
+  UI.Chart #OpmStacked : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Occurrence Per Million',
-    Description     : 'The rating gives evidence of product quality and rates number of claims issued by Danfoss based on definitions of Claims.',
-    ChartType       : #Column,
-    Dimensions      : [ yearMonth ],
+    Description     : 'Rates the number of claims issued by Danfoss based on the definitions of Claims.',
+    ChartType       : #ColumnStacked,
+    Dimensions      : [ yearMonth, segmentPlant ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOpm] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category },
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
         DynamicMeasure: ![@Analytics.AggregatedProperty#avgOpm], Role: #Axis1 }
     ]
   },
-
   UI.Chart #OpmRolling : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Occurrence Per Million',
     Description     : 'Rolling 12 months',
-    ChartType       : #Line,
-    Dimensions      : [ yearMonth ],
+    ChartType       : #ColumnStacked,
+    Dimensions      : [ yearMonth, segmentPlant ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOpm] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category },
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',

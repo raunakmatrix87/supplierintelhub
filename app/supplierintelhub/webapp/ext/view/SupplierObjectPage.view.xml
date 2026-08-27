@@ -81,11 +81,13 @@
                                 metaPath="spendData/@com.sap.vocabularies.UI.v1.SelectionFields"
                                 visible="false"
                                 liveMode="true"/>
-                            <macros:Chart
-                                id="spendChart"
-                                metaPath="spendData/@com.sap.vocabularies.UI.v1.Chart"
-                                filterBar="spendFilterBar"
-                                selectionMode="None"/>
+                            <VBox id="spendChartBox" width="100%" class="sapUiSmallMarginTop">
+                                <macros:Chart
+                                    id="spendChart"
+                                    metaPath="spendData/@com.sap.vocabularies.UI.v1.Chart#SpendStacked"
+                                        filterBar="spendFilterBar"
+                                    selectionMode="None"/>
+                            </VBox>
                         </VBox>
                     </uxap:ObjectPageSubSection>
                 </uxap:subSections>
@@ -93,14 +95,14 @@
             <uxap:ObjectPageSection id="_IDGenObjectPageSection2" title="Parts Per Million" titleUppercase="false">
                 <uxap:subSections>
                     <uxap:ObjectPageSubSection id="_IDGenObjectPageSubSection1">
-                        <FlexBox id="_IDGenFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true">
-                            <VBox id="_IDGenVBox6" class="sapUiSmallMarginEnd" width="48%" minWidth="22rem">
-                                <macros:Chart
-                                    id="ppmTrendChart"
-                                    metaPath="ppmData/@com.sap.vocabularies.UI.v1.Chart#PpmTrend"
-                                    selectionMode="None"/>
-                            </VBox>
-                            <VBox id="_IDGenVBox7" width="48%" minWidth="22rem">
+                        <VBox id="ppmChartBox" width="100%" class="sapUiSmallMarginTop">
+                            <macros:Chart
+                                id="ppmTrendChart"
+                                metaPath="ppmData/@com.sap.vocabularies.UI.v1.Chart#PpmStacked"
+                                selectionMode="None"/>
+                        </VBox>
+                        <FlexBox id="_IDGenFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true" class="sapUiSmallMarginTop">
+                            <VBox id="_IDGenVBox7" width="100%">
                                 <macros:Chart
                                     id="ppmYoYChart"
                                     metaPath="ppmData/@com.sap.vocabularies.UI.v1.Chart#PpmYoY"
@@ -113,14 +115,14 @@
             <uxap:ObjectPageSection id="opmSection" title="Occurrence Per Million" titleUppercase="false">
                 <uxap:subSections>
                     <uxap:ObjectPageSubSection id="opmSubSection">
-                        <FlexBox id="opmFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true">
-                            <VBox id="opmTrendBox" class="sapUiSmallMarginEnd" width="48%" minWidth="22rem">
-                                <macros:Chart
-                                    id="opmTrendChart"
-                                    metaPath="opmData/@com.sap.vocabularies.UI.v1.Chart#OpmTrend"
-                                    selectionMode="None"/>
-                            </VBox>
-                            <VBox id="opmRollingBox" width="48%" minWidth="22rem">
+                        <VBox id="opmChartBox" width="100%" class="sapUiSmallMarginTop">
+                            <macros:Chart
+                                id="opmTrendChart"
+                                metaPath="opmData/@com.sap.vocabularies.UI.v1.Chart#OpmStacked"
+                                selectionMode="None"/>
+                        </VBox>
+                        <FlexBox id="opmFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true" class="sapUiSmallMarginTop">
+                            <VBox id="opmRollingBox" width="100%">
                                 <macros:Chart
                                     id="opmRollingChart"
                                     metaPath="opmData/@com.sap.vocabularies.UI.v1.Chart#OpmRolling"
@@ -134,14 +136,14 @@
                 <uxap:subSections>
                     <uxap:ObjectPageSubSection id="otdSubSection">
                         <VBox id="otdSectionBox" fitContainer="true">
+                            <VBox id="otdChartBox" width="100%" class="sapUiSmallMarginTop">
+                                <macros:Chart
+                                    id="otdTrendChart"
+                                    metaPath="otdData/@com.sap.vocabularies.UI.v1.Chart#OtdStacked"
+                                    selectionMode="None"/>
+                            </VBox>
                             <FlexBox id="otdTopRow" wrap="Wrap" alignItems="Stretch" fitContainer="true">
-                                <VBox id="otdTrendBox" class="sapUiSmallMarginEnd" width="62%" minWidth="26rem">
-                                    <macros:Chart
-                                        id="otdTrendChart"
-                                        metaPath="otdData/@com.sap.vocabularies.UI.v1.Chart#OtdTrend"
-                                        selectionMode="None"/>
-                                </VBox>
-                                <VBox id="otdKpiBox" width="34%" minWidth="18rem">
+                                <VBox id="otdKpiBox" width="100%" minWidth="18rem">
                                     <Panel id="otdKpiPanel" backgroundDesign="Solid" class="sapUiSmallMarginTop">
                                         <VBox id="otdKpiContent" class="sapUiSmallMargin">
                                             <Title id="otdKpiTitle" text="On Time Delivery - Average Results" level="H3"/>
