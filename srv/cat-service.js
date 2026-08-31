@@ -624,12 +624,9 @@ module.exports = cds.service.impl(async function () {
     }
     return mapped;
   }, {
-    // One row per supplier per segment/plant combination. Deduping on the name alone
-    // hid every vendor record but the first, so a supplier listed at several Danfoss
-    // plants could only be opened at one of them. The object page still reads by ID.
-    dedupeBy: (row) => (row.name
-      ? [row.name, row.segmentName, row.plantName].map((v) => v ?? '').join('\u0001')
-      : null),
+    // The source table may contain duplicate rows for the same vendor number.
+    // Dedup by vendorNumber so each unique vendor number appears exactly once.
+    dedupeBy: (row) => row.vendorNumber || null,
     onDuplicate: (id) => LOG.warn(
       `Duplicate ${SC.vendorNumber} "${id}" in ${TABLES.supplierList}. ` +
       'Suppliers.ID assumes it is unique — spend and OTD may attach to the wrong record.'
