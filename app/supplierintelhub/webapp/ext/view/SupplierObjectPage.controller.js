@@ -207,21 +207,7 @@ sap.ui.define(
             _setOtdKpi: function (aRows) {
                 var oModel = this.getView().getModel("otdKpi");
 
-                var aValid = (aRows || [])
-                    .filter(function (oRow) {
-                        return oRow && oRow.otd !== null && oRow.otd !== undefined && oRow.otd !== "";
-                    })
-                    .map(function (oRow) {
-                        return {
-                            period: oRow.monthLabel && oRow.year
-                                ? oRow.monthLabel + " " + oRow.year
-                                : null,
-                            value: Number(oRow.otd)
-                        };
-                    })
-                    .filter(function (oPoint) {
-                        return isFinite(oPoint.value);
-                    });
+                var aValid = consolidateByPeriod(aRows);
 
                 if (!aValid.length) {
                     oModel.setData(emptyOtdKpi());
@@ -272,6 +258,44 @@ sap.ui.define(
                 });
             }
         });
+
+        // A consolidated supplier carries several vendor numbers, so a single month can
+        // arrive as several rows. Averaging them per period first is what keeps
+        // "latest vs. previous" comparing two months rather than two vendor numbers.
+        function consolidateByPeriod(aRows) {
+            var mByPeriod = Object.create(null);
+            var aPeriods = [];
+
+            (aRows || []).forEach(function (oRow) {
+                if (!oRow || oRow.otd === null || oRow.otd === undefined || oRow.otd === "") {
+                    return;
+                }
+                var fValue = Number(oRow.otd);
+                if (!isFinite(fValue)) {
+                    return;
+                }
+
+                var sKey = oRow.year + "-" + oRow.month;
+                var oEntry = mByPeriod[sKey];
+                if (!oEntry) {
+                    oEntry = {
+                        period: oRow.monthLabel && oRow.year
+                            ? oRow.monthLabel + " " + oRow.year
+                            : null,
+                        sum: 0,
+                        count: 0
+                    };
+                    mByPeriod[sKey] = oEntry;
+                    aPeriods.push(oEntry);
+                }
+                oEntry.sum += fValue;
+                oEntry.count += 1;
+            });
+
+            return aPeriods.map(function (oEntry) {
+                return { period: oEntry.period, value: oEntry.sum / oEntry.count };
+            });
+        }
 
         function round1(fValue) {
             return Math.round(fValue * 10) / 10;

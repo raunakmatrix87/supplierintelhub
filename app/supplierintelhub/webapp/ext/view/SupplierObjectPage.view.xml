@@ -84,7 +84,7 @@
                             <VBox id="spendChartBox" width="100%" class="sapUiSmallMarginTop">
                                 <macros:Chart
                                     id="spendChart"
-                                    metaPath="spendData/@com.sap.vocabularies.UI.v1.Chart#SpendStacked"
+                                    metaPath="spendData/@com.sap.vocabularies.UI.v1.Chart#SpendTrend"
                                         filterBar="spendFilterBar"
                                     selectionMode="None"/>
                             </VBox>
@@ -98,7 +98,7 @@
                         <VBox id="ppmChartBox" width="100%" class="sapUiSmallMarginTop">
                             <macros:Chart
                                 id="ppmTrendChart"
-                                metaPath="ppmData/@com.sap.vocabularies.UI.v1.Chart#PpmStacked"
+                                metaPath="ppmData/@com.sap.vocabularies.UI.v1.Chart#PpmTrend"
                                 selectionMode="None"/>
                         </VBox>
                         <FlexBox id="_IDGenFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true" class="sapUiSmallMarginTop">
@@ -118,7 +118,7 @@
                         <VBox id="opmChartBox" width="100%" class="sapUiSmallMarginTop">
                             <macros:Chart
                                 id="opmTrendChart"
-                                metaPath="opmData/@com.sap.vocabularies.UI.v1.Chart#OpmStacked"
+                                metaPath="opmData/@com.sap.vocabularies.UI.v1.Chart#OpmTrend"
                                 selectionMode="None"/>
                         </VBox>
                         <FlexBox id="opmFlexBox" wrap="Wrap" alignItems="Stretch" fitContainer="true" class="sapUiSmallMarginTop">
@@ -139,7 +139,7 @@
                             <VBox id="otdChartBox" width="100%" class="sapUiSmallMarginTop">
                                 <macros:Chart
                                     id="otdTrendChart"
-                                    metaPath="otdData/@com.sap.vocabularies.UI.v1.Chart#OtdStacked"
+                                    metaPath="otdData/@com.sap.vocabularies.UI.v1.Chart#OtdTrend"
                                     selectionMode="None"/>
                             </VBox>
                             <FlexBox id="otdTopRow" wrap="Wrap" alignItems="Stretch" fitContainer="true">

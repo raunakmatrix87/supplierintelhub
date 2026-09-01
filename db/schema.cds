@@ -33,6 +33,8 @@ entity Suppliers : sid, managed {
       Expired       = 'Expired';
     };
   isTopSupplier      : Boolean            @title: 'Top Supplier'          default false;
+  vendorNumbers      : String(500)        @title: 'Vendor Numbers'         @Core.Computed;
+  vendorCount        : Integer            @title: 'Vendor Numbers'         @Core.Computed;
   activeQualityClaims : Integer           @title: 'Active Quality Claims'  @Core.Computed;
   currentPPM          : Decimal(9,2)      @title: 'Current PPM'            @Core.Computed;
   currentOTD          : Decimal(5,2)      @title: 'On-Time Delivery %'    @Core.Computed;

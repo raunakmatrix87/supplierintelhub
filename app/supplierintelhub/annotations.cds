@@ -29,15 +29,14 @@ annotate service.SpendData with @(
     ![@Common.Label]     : 'Spend Amount (EUR)'
   },
   UI.SelectionFields : [ year ],
-  UI.Chart #SpendStacked : {
+  UI.Chart #SpendTrend : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Spend Development',
-    ChartType       : #ColumnStacked,
-    Dimensions      : [ year, segmentPlant ],
+    ChartType       : #Column,
+    Dimensions      : [ year ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#totalSpend] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category },
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -64,16 +63,15 @@ annotate service.PPMData with @(
     ![@Common.Label]     : 'PPM'
   },
 
-  UI.Chart #PpmStacked : {
+  UI.Chart #PpmTrend : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Parts Per Million',
     Description     : 'Evidence of product quality — rates the quantity of nonconforming parts on production lines and/or at customer locations.',
-    ChartType       : #ColumnStacked,
-    Dimensions      : [ yearMonth, segmentPlant ],
+    ChartType       : #Column,
+    Dimensions      : [ yearMonth ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgPpm] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category },
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -84,12 +82,11 @@ annotate service.PPMData with @(
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Parts Per Million - Year over Year',
     Description     : 'Year-over-year comparison',
-    ChartType       : #ColumnStacked,
-    Dimensions      : [ year, segmentPlant ],
+    ChartType       : #Column,
+    Dimensions      : [ year ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgPpm] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category },
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -115,16 +112,15 @@ annotate service.OTDData with @(
     ![@Common.Label]     : 'On Time Delivery %'
   },
 
-  UI.Chart #OtdStacked : {
+  UI.Chart #OtdTrend : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'On Time Delivery',
     Description     : 'Purchase order line items delivered on time to the required date and quantity, divided by total line items required.',
-    ChartType       : #ColumnStacked,
-    Dimensions      : [ yearMonth, segmentPlant ],
+    ChartType       : #Column,
+    Dimensions      : [ yearMonth ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOtd] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category },
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -135,12 +131,11 @@ annotate service.OTDData with @(
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'On Time Delivery - Year over Year',
     Description     : 'Year-over-year comparison',
-    ChartType       : #ColumnStacked,
-    Dimensions      : [ year, segmentPlant ],
+    ChartType       : #Column,
+    Dimensions      : [ year ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOtd] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category },
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: year, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -190,16 +185,15 @@ annotate service.OPMData with @(
     ![@Common.Label]     : 'OPM'
   },
 
-  UI.Chart #OpmStacked : {
+  UI.Chart #OpmTrend : {
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Occurrence Per Million',
     Description     : 'Rates the number of claims issued by Danfoss based on the definitions of Claims.',
-    ChartType       : #ColumnStacked,
-    Dimensions      : [ yearMonth, segmentPlant ],
+    ChartType       : #Column,
+    Dimensions      : [ yearMonth ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOpm] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category },
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
@@ -210,12 +204,11 @@ annotate service.OPMData with @(
     $Type           : 'UI.ChartDefinitionType',
     Title           : 'Occurrence Per Million',
     Description     : 'Rolling 12 months',
-    ChartType       : #ColumnStacked,
-    Dimensions      : [ yearMonth, segmentPlant ],
+    ChartType       : #Column,
+    Dimensions      : [ yearMonth ],
     DynamicMeasures : [ ![@Analytics.AggregatedProperty#avgOpm] ],
     DimensionAttributes : [
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category },
-      { $Type:'UI.ChartDimensionAttributeType', Dimension: segmentPlant, Role: #Series }
+      { $Type:'UI.ChartDimensionAttributeType', Dimension: yearMonth, Role: #Category }
     ],
     MeasureAttributes : [
       { $Type:'UI.ChartMeasureAttributeType',
